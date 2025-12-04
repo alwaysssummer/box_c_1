@@ -69,10 +69,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.difficulty !== undefined) updateData.difficulty = body.difficulty
     if (body.recommendedModel !== undefined) updateData.recommended_model = body.recommendedModel
     
-    const { data, error } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
       .from('data_types')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .update(updateData as any)
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
