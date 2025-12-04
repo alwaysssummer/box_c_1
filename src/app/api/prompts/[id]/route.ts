@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { extractVariables } from '@/lib/prompt-utils'
 
 // GET /api/prompts/[id] - 특정 프롬프트 조회
 export async function GET(
@@ -109,13 +110,3 @@ export async function DELETE(
     )
   }
 }
-
-// 프롬프트에서 변수 추출 함수
-function extractVariables(content: string): string[] {
-  const matches = content.match(/\[\[([^\]]+)\]\]/g) || []
-  return [...new Set(matches.map((m) => m.replace(/\[\[|\]\]/g, '')))]
-}
-
-
-
-

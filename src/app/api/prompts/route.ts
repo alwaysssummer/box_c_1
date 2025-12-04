@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { extractVariables } from '@/lib/prompt-utils'
+import { handleApiError } from '@/lib/api-utils'
 
 // GET /api/prompts - 모든 프롬프트 조회
 export async function GET(request: NextRequest) {
@@ -28,11 +30,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error fetching prompts:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch prompts' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Failed to fetch prompts')
   }
 }
 
@@ -68,20 +66,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
-    console.error('Error creating prompt:', error)
-    return NextResponse.json(
-      { error: 'Failed to create prompt' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Failed to create prompt')
   }
 }
-
-// 프롬프트에서 변수 추출 함수
-function extractVariables(content: string): string[] {
-  const matches = content.match(/\[\[([^\]]+)\]\]/g) || []
-  return [...new Set(matches.map((m) => m.replace(/\[\[|\]\]/g, '')))]
-}
-
-
-
-

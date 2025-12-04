@@ -15,6 +15,7 @@ import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, CHOICE_LAYOUTS, C
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { FolderTree, Settings, Users, Sparkles, Database } from 'lucide-react'
+import { convertToTreeNodes } from '@/lib/tree-utils'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('교재관리')
@@ -267,30 +268,6 @@ export default function AdminPage() {
   }, [fetchGroups, fetchDataTypes, fetchQuestionTypes, fetchPrompts])
 
   // ============ 교재관리 헬퍼 함수들 ============
-
-  const convertToTreeNodes = (groups: GroupWithTextbooks[]): TreeNode[] => {
-    return groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      type: 'group' as const,
-      children: group.textbooks?.map((textbook) => ({
-        id: textbook.id,
-        name: textbook.name,
-        type: 'textbook' as const,
-        children: textbook.units?.map((unit) => ({
-          id: unit.id,
-          name: unit.name,
-          type: 'unit' as const,
-          children: unit.passages?.map((passage) => ({
-            id: passage.id,
-            name: passage.name,
-            type: 'passage' as const,
-            children: [],
-          })) || [],
-        })) || [],
-      })) || [],
-    }))
-  }
 
   const handleCreateGroup = async (name: string) => {
     console.log('handleCreateGroup called:', name)

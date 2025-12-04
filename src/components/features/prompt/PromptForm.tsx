@@ -25,6 +25,7 @@ import {
   type AIErrorResponse
 } from '@/types'
 import type { Prompt, Passage, Group, Textbook, Unit } from '@/types/database'
+import { extractVariables } from '@/lib/prompt-utils'
 
 interface PromptFormData {
   id: string | null
@@ -196,12 +197,6 @@ export function PromptForm({
       setPassages([])
     }
   }, [selectedUnitId])
-
-  // 프롬프트에서 변수 추출
-  const extractVariables = (content: string): string[] => {
-    const matches = content.match(/\[\[([^\]]+)\]\]/g) || []
-    return [...new Set(matches.map((m) => m.replace(/\[\[|\]\]/g, '')))]
-  }
 
   const handleContentChange = (value: string) => {
     setFormData(prev => ({
