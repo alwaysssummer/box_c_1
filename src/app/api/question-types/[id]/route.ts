@@ -32,9 +32,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       )
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const responseData = data as Record<string, any>
     return NextResponse.json({
-      ...data,
-      dataTypeList: data.question_type_items
+      ...responseData,
+      dataTypeList: responseData.question_type_items
         ?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index)
         .map((item: { id: string; data_types: { id: string; name: string }; role: string }) => ({
           id: item.id,
@@ -98,8 +100,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateResponseData = data as Record<string, any>
     return NextResponse.json({
-      ...data,
+      ...updateResponseData,
       dataTypeList: body.dataTypeList || []
     })
   } catch (error) {

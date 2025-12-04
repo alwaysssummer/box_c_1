@@ -19,7 +19,8 @@ export async function GET() {
     if (error) throw error
     
     // 의존성 데이터 변환
-    const result = data.map(dt => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = data.map((dt: Record<string, any>) => ({
       ...dt,
       dependsOn: dt.data_type_dependencies?.map((d: { depends_on_id: string }) => d.depends_on_id) || []
     }))
