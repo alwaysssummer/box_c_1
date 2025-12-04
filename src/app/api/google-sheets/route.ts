@@ -32,37 +32,51 @@ function extractSheetId(url: string): string | null {
   return match ? match[1] : null
 }
 
-// CSV 파싱 함수 (쉼표가 포함된 셀 처리)
+// CSV 파싱 함수 (셀 내 줄바꿈 올바르게 처리)
+// 핵심: 따옴표 안의 줄바꿈은 셀 내용으로, 따옴표 밖의 줄바꿈만 행 구분으로 처리
 function parseCSV(csvText: string): string[][] {
   const rows: string[][] = []
-  const lines = csvText.split('\n')
+  let currentRow: string[] = []
+  let cell = ''
+  let inQuotes = false
   
-  for (const line of lines) {
-    if (!line.trim()) continue
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i]
     
-    const row: string[] = []
-    let cell = ''
-    let inQuotes = false
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]
-      
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          cell += '"'
-          i++
-        } else {
-          inQuotes = !inQuotes
-        }
-      } else if (char === ',' && !inQuotes) {
-        row.push(cell.trim())
-        cell = ''
+    if (char === '"') {
+      if (inQuotes && csvText[i + 1] === '"') {
+        // 이스케이프된 따옴표 ("") → 실제 따옴표 하나
+        cell += '"'
+        i++
       } else {
-        cell += char
+        // 따옴표 시작/끝 토글
+        inQuotes = !inQuotes
       }
+    } else if (char === ',' && !inQuotes) {
+      // 따옴표 밖의 쉼표 = 셀 구분
+      currentRow.push(cell.trim())
+      cell = ''
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      // 따옴표 밖의 줄바꿈 = 행 구분
+      if (char === '\r' && csvText[i + 1] === '\n') {
+        i++ // Windows \r\n 처리
+      }
+      currentRow.push(cell.trim())
+      if (currentRow.some(c => c)) {
+        rows.push(currentRow)
+      }
+      currentRow = []
+      cell = ''
+    } else {
+      // 일반 문자 (셀 내 줄바꿈 포함)
+      cell += char
     }
-    row.push(cell.trim())
-    rows.push(row)
+  }
+  
+  // 마지막 행 처리
+  currentRow.push(cell.trim())
+  if (currentRow.some(c => c)) {
+    rows.push(currentRow)
   }
   
   return rows

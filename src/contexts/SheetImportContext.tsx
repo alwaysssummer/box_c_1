@@ -80,7 +80,7 @@ interface SheetImportContextType {
   handleToggleAllPassages: () => void
   clearPassageResult: (key: string) => void
   
-  // 통계
+  // 통계 (전체)
   getSelectedCount: () => number
   getSplitCount: () => number
   getTotalSentences: () => number
@@ -90,8 +90,18 @@ interface SheetImportContextType {
   getKoreanIssueCount: () => number
   getTotalKoreanIssues: () => number
   
+  // 통계 (현재 선택된 지문 기준)
+  getSelectedSplitCount: () => number
+  getSelectedTotalSentences: () => number
+  getSelectedAverageConfidence: () => number
+  getSelectedErrorCount: () => number
+  
   // 헬퍼
   getPassageByKey: (key: string) => { sheetName: string; passage: SheetPassage } | null
+  
+  // 업데이트 모드 (덮어쓰기 시 localStorage 복구 안함)
+  isUpdateMode: boolean
+  setIsUpdateMode: (isUpdate: boolean) => void
 }
 
 const SheetImportContext = createContext<SheetImportContextType | null>(null)
@@ -116,9 +126,22 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
   const [selectedItems, setSelectedItems] = useState<Record<string, string[]>>({})
   const [expandedUnits, setExpandedUnits] = useState<Record<string, boolean>>({})
   
-  // 분리 설정
-  const [splitModel, setSplitModel] = useState<ModelId>('gemini-2.0-flash')
-  const [splitMode, setSplitMode] = useState<'regex' | 'ai' | 'hybrid' | 'ai-verify' | 'parallel'>('parallel')
+  // 분리 설정 (localStorage에서 초기값 로드)
+  const [splitModel, setSplitModel] = useState<ModelId>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('splitModel') as ModelId) || 'gemini-2.0-flash'
+    }
+    return 'gemini-2.0-flash'
+  })
+  const [splitMode, setSplitMode] = useState<'regex' | 'ai' | 'hybrid' | 'ai-verify' | 'parallel'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('splitMode')
+      if (saved && ['regex', 'ai', 'hybrid', 'ai-verify', 'parallel'].includes(saved)) {
+        return saved as 'regex' | 'ai' | 'hybrid' | 'ai-verify' | 'parallel'
+      }
+    }
+    return 'parallel'
+  })
   
   // 분리 결과
   const [splitResults, setSplitResults] = useState<Record<string, PassageSplitResult>>({})
@@ -128,6 +151,9 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
   
   // 선택된 지문 (우측 패널용)
   const [selectedPassageKey, setSelectedPassageKey] = useState<string | null>(null)
+  
+  // 업데이트 모드 (덮어쓰기 시 localStorage 복구 안함)
+  const [isUpdateMode, setIsUpdateMode] = useState(false)
 
   // ============================================
   // 🛡️ beforeunload 경고 (작업 중 이탈 방지)
@@ -156,9 +182,9 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
     }
   }, [splitResults, sheetInfo])
 
-  // 시트 로드 시 localStorage에서 복구
+  // 시트 로드 시 localStorage에서 복구 (업데이트 모드 제외)
   useEffect(() => {
-    if (sheetInfo) {
+    if (sheetInfo && !isUpdateMode) {
       const key = getStorageKey(sheetInfo.sheetId)
       const saved = localStorage.getItem(key)
       if (saved) {
@@ -174,7 +200,7 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, [sheetInfo])
+  }, [sheetInfo, isUpdateMode])
 
   // ============================================
   // 시트 조회
@@ -509,6 +535,49 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
   , [splitResults])
 
   // ============================================
+  // 선택된 지문 기준 통계 함수들 (현재 선택)
+  // ============================================
+  const getSelectedKeys = useCallback(() => {
+    const keys: string[] = []
+    Object.entries(selectedItems).forEach(([sheetName, passageNumbers]) => {
+      passageNumbers.forEach(num => {
+        keys.push(`${sheetName}-${num}`)
+      })
+    })
+    return keys
+  }, [selectedItems])
+
+  const getSelectedSplitCount = useCallback(() => {
+    const selectedKeys = getSelectedKeys()
+    return selectedKeys.filter(key => 
+      splitResults[key]?.splitResult && !splitResults[key]?.error
+    ).length
+  }, [getSelectedKeys, splitResults])
+
+  const getSelectedTotalSentences = useCallback(() => {
+    const selectedKeys = getSelectedKeys()
+    return selectedKeys.reduce((sum, key) => 
+      sum + (splitResults[key]?.splitResult?.sentences.length || 0), 
+      0
+    )
+  }, [getSelectedKeys, splitResults])
+
+  const getSelectedAverageConfidence = useCallback(() => {
+    const selectedKeys = getSelectedKeys()
+    const results = selectedKeys
+      .map(key => splitResults[key])
+      .filter(r => r?.splitResult)
+    if (results.length === 0) return 0
+    const sum = results.reduce((s, r) => s + (r.splitResult?.confidence || 0), 0)
+    return Math.round((sum / results.length) * 100)
+  }, [getSelectedKeys, splitResults])
+
+  const getSelectedErrorCount = useCallback(() => {
+    const selectedKeys = getSelectedKeys()
+    return selectedKeys.filter(key => splitResults[key]?.error).length
+  }, [getSelectedKeys, splitResults])
+
+  // ============================================
   // 헬퍼 함수
   // ============================================
   const getPassageByKey = useCallback((key: string) => {
@@ -562,7 +631,13 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
     getAIProcessedCount,
     getKoreanIssueCount,
     getTotalKoreanIssues,
+    getSelectedSplitCount,
+    getSelectedTotalSentences,
+    getSelectedAverageConfidence,
+    getSelectedErrorCount,
     getPassageByKey,
+    isUpdateMode,
+    setIsUpdateMode,
   }
 
   return (

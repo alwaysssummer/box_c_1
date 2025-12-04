@@ -1,8 +1,16 @@
 'use client'
 
+import React from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -12,12 +20,29 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
+  RefreshCw,
+  Plus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSheetImport } from '@/contexts/SheetImportContext'
 
+// 교재 타입 (간단한 형태)
+interface TextbookForUpdate {
+  id: string
+  name: string
+  units?: {
+    id: string
+    name: string
+    passages?: {
+      id: string
+      name: string
+    }[]
+  }[]
+}
+
 interface SheetSelectorProps {
   groupName: string
+  textbooks?: TextbookForUpdate[]  // 기존 교재 목록 (업데이트용)
   onRegister: (data: {
     name: string
     units: { 
@@ -32,9 +57,22 @@ interface SheetSelectorProps {
       }[] 
     }[]
   }) => Promise<void>
+  onUpdate?: (textbookId: string, data: {
+    units: { 
+      name: string
+      passages: { 
+        name: string
+        content?: string
+        koreanTranslation?: string
+        sentences?: import('@/types').ParsedSentence[]
+        splitModel?: string
+        splitConfidence?: number
+      }[] 
+    }[]
+  }) => Promise<void>
 }
 
-export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
+export function SheetSelector({ groupName, textbooks = [], onRegister, onUpdate }: SheetSelectorProps) {
   const {
     googleSheetUrl,
     setGoogleSheetUrl,
@@ -55,11 +93,40 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
     getSelectedCount,
     getSplitCount,
     getTotalSentences,
-    getAIErrorCount,
+    setIsUpdateMode,
   } = useSheetImport()
 
   const [isRegistering, setIsRegistering] = React.useState(false)
   const [expandedPassages, setExpandedPassages] = React.useState<Record<string, boolean>>({})
+  
+  // 업데이트 모드: 'new' = 새 교재 등록, 교재ID = 해당 교재 업데이트
+  const [updateMode, setUpdateMode] = React.useState<string>('new')
+  
+  // 업데이트 모드 변경 시 context에 알림 (localStorage 복구 제어)
+  React.useEffect(() => {
+    setIsUpdateMode(updateMode !== 'new')
+  }, [updateMode, setIsUpdateMode])
+  
+  // 선택된 교재의 매칭 정보
+  const selectedTextbook = textbooks.find(t => t.id === updateMode)
+  
+  // 단원/지문 매칭 체크 함수
+  const getMatchInfo = (sheetName: string, passageNumber: string) => {
+    if (!selectedTextbook) return null
+    
+    const matchedUnit = selectedTextbook.units?.find(u => u.name === sheetName)
+    if (!matchedUnit) return { unitMatch: false, passageMatch: false }
+    
+    const matchedPassage = matchedUnit.passages?.find(p => 
+      p.name === `지문 ${passageNumber}` || p.name === passageNumber
+    )
+    return { 
+      unitMatch: true, 
+      passageMatch: !!matchedPassage,
+      unitId: matchedUnit.id,
+      passageId: matchedPassage?.id 
+    }
+  }
 
   const toggleUnitExpand = (sheetName: string) => {
     setExpandedUnits((prev) => ({ ...prev, [sheetName]: !prev[sheetName] }))
@@ -84,8 +151,8 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
     return null
   }
 
-  // 교재 등록
-  const handleRegister = async () => {
+  // 교재 등록 또는 업데이트
+  const handleRegisterOrUpdate = async () => {
     if (!sheetInfo || getSelectedCount() === 0 || isRegistering) return
 
     setIsRegistering(true)
@@ -96,6 +163,10 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
           const passage = sheet?.passages.find(p => p.number === num)
           const key = `${sheetName}-${num}`
           const splitResult = splitResults[key]
+          
+          // 디버깅
+          console.log(`[SheetSelector] Key: ${key}, splitResult:`, splitResult)
+          console.log(`[SheetSelector] sentences:`, splitResult?.splitResult?.sentences)
 
           return {
             name: `지문 ${num}`,
@@ -112,22 +183,96 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
         }
       })
 
-      await onRegister({
-        name: sheetInfo.fileName,
-        units,
-      })
+      if (updateMode === 'new') {
+        // 새 교재 등록
+        await onRegister({
+          name: sheetInfo.fileName,
+          units,
+        })
+      } else if (onUpdate) {
+        // 기존 교재 업데이트
+        await onUpdate(updateMode, { units })
+      }
     } finally {
       setIsRegistering(false)
     }
   }
+  
+  // 매칭 통계
+  const getMatchStats = () => {
+    if (!selectedTextbook || !sheetInfo) return null
+    
+    let matchedUnits = 0
+    let matchedPassages = 0
+    let newUnits = 0
+    let newPassages = 0
+    
+    Object.entries(selectedItems).forEach(([sheetName, passageNumbers]) => {
+      const matchedUnit = selectedTextbook.units?.find(u => u.name === sheetName)
+      if (matchedUnit) {
+        matchedUnits++
+        passageNumbers.forEach(num => {
+          const matchedPassage = matchedUnit.passages?.find(p => 
+            p.name === `지문 ${num}` || p.name === num
+          )
+          if (matchedPassage) matchedPassages++
+          else newPassages++
+        })
+      } else {
+        newUnits++
+        newPassages += passageNumbers.length
+      }
+    })
+    
+    return { matchedUnits, matchedPassages, newUnits, newPassages }
+  }
 
   const totalPassages = sheetInfo?.sheets.reduce((sum, s) => sum + s.passages.length, 0) || 0
 
+  const matchStats = getMatchStats()
+  
   return (
     <div className="h-full flex flex-col">
       <h3 className="text-lg font-semibold mb-4 flex-shrink-0">
-        📁 {groupName} - 교재 등록
+        📁 {groupName} - {updateMode === 'new' ? '교재 등록' : '교재 업데이트'}
       </h3>
+
+      {/* 등록/업데이트 모드 선택 */}
+      {textbooks.length > 0 && (
+        <div className="mb-4 flex-shrink-0">
+          <label className="block text-sm font-medium text-foreground mb-2">
+            등록 모드
+          </label>
+          <Select value={updateMode} onValueChange={setUpdateMode}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="등록 모드 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="new">
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-green-500" />
+                  <span>새 교재 등록</span>
+                </div>
+              </SelectItem>
+              {textbooks.map(textbook => (
+                <SelectItem key={textbook.id} value={textbook.id}>
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-blue-500" />
+                    <span>{textbook.name} 업데이트</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* 업데이트 모드 안내 */}
+          {updateMode !== 'new' && selectedTextbook && (
+            <p className="text-xs text-muted-foreground mt-1">
+              📌 단원명/지문번호가 일치하면 덮어쓰기, 새로운 항목은 추가됩니다
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 구글시트 URL 입력 */}
       <div className="mb-4 flex-shrink-0">
@@ -180,25 +325,6 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
               ({sheetInfo.sheets.length}개 시트, {totalPassages}개 지문)
             </span>
           </div>
-
-          {/* 분리 상태 요약 */}
-          {getSplitCount() > 0 && (
-            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-200 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-800">
-                    {getSplitCount()}개 분리 완료 ({getTotalSentences()}문장)
-                  </span>
-                </div>
-                {getAIErrorCount() > 0 && (
-                  <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
-                    ❌ {getAIErrorCount()}개 실패
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* 단원/지문 선택 */}
           <div className="flex-1 min-h-0 flex flex-col">
@@ -279,14 +405,14 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
                       </span>
 
                       <div className="flex items-center gap-2">
-                        {splitCountInSheet > 0 && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            ✅ {splitCountInSheet}
-                          </span>
-                        )}
                         {warningCountInSheet > 0 && (
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                             ⚠️ {warningCountInSheet}
+                          </span>
+                        )}
+                        {splitCountInSheet > 0 && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                            ✅ {splitCountInSheet}
                           </span>
                         )}
                         {errorCountInSheet > 0 && (
@@ -303,7 +429,10 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
                     {/* 지문 목록 */}
                     {isExpanded && (
                       <div className="border-t border-border bg-muted/30 p-2 space-y-1">
-                        {sheet.passages.map((passage) => {
+                        {sheet.passages.map((passage, passageIndex) => {
+                          // React key는 인덱스 포함하여 고유하게
+                          const reactKey = `${sheet.sheetName}-${passageIndex}-${passage.number}`
+                          // 데이터 key는 기존 형식 유지 (splitResults와 호환)
                           const key = `${sheet.sheetName}-${passage.number}`
                           const splitResult = splitResults[key]
                           const isSelected = selectedPassageKey === key
@@ -316,10 +445,13 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
                             issue => issue.needsReview
                           ).length || 0
                           const hasWarning = warningCount > 0
+                          
+                          // 매칭 정보 (업데이트 모드)
+                          const matchInfo = updateMode !== 'new' ? getMatchInfo(sheet.sheetName, passage.number) : null
 
                           return (
                             <div 
-                              key={passage.number}
+                              key={reactKey}
                               className={cn(
                                 "rounded-lg border overflow-hidden transition-all",
                                 isSelected 
@@ -380,6 +512,18 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
                                 )}>
                                   지문 {passage.number}
                                 </span>
+                                
+                                {/* 매칭 표시 (업데이트 모드) */}
+                                {matchInfo && (
+                                  <span className={cn(
+                                    "text-xs px-1.5 py-0.5 rounded",
+                                    matchInfo.passageMatch 
+                                      ? "bg-blue-100 text-blue-700" 
+                                      : "bg-green-100 text-green-700"
+                                  )}>
+                                    {matchInfo.passageMatch ? '🔄' : '✨'}
+                                  </span>
+                                )}
                                 
                                 {getSplitStatusIcon(key)}
                                 
@@ -493,28 +637,53 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
             </div>
           </div>
 
-          {/* 등록 버튼 */}
+          {/* 매칭 통계 (업데이트 모드) */}
+          {updateMode !== 'new' && matchStats && getSelectedCount() > 0 && (
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200 flex-shrink-0">
+              <p className="text-sm font-medium text-blue-800 mb-2">📊 매칭 결과</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 text-blue-500" />
+                  <span>덮어쓰기: {matchStats.matchedPassages}개 지문</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Plus className="w-3 h-3 text-green-500" />
+                  <span>새로 추가: {matchStats.newPassages}개 지문</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 등록/업데이트 버튼 */}
           <div className="mt-4 space-y-3 flex-shrink-0">
             <Button
-              onClick={handleRegister}
-              disabled={getSelectedCount() === 0 || isRegistering || isSplitting}
+              onClick={handleRegisterOrUpdate}
+              disabled={getSelectedCount() === 0 || isRegistering || isSplitting || (updateMode !== 'new' && !onUpdate)}
               className={cn(
                 'w-full h-12 text-base',
                 getSelectedCount() > 0
-                  ? 'bg-primary hover:bg-primary/90'
+                  ? updateMode === 'new' 
+                    ? 'bg-primary hover:bg-primary/90'
+                    : 'bg-blue-600 hover:bg-blue-700'
                   : 'bg-muted text-muted-foreground cursor-not-allowed'
               )}
             >
               {isRegistering ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                  교재 등록 중...
+                  {updateMode === 'new' ? '교재 등록 중...' : '교재 업데이트 중...'}
                 </>
-              ) : (
+              ) : updateMode === 'new' ? (
                 <>
                   <FileSpreadsheet className="w-5 h-5 mr-2" />
                   교재 등록 ({getSelectedCount()}개 지문
                   {getSplitCount() > 0 && `, ${getTotalSentences()}개 문장`})
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-5 h-5 mr-2" />
+                  교재 업데이트 ({getSelectedCount()}개 지문
+                  {matchStats && ` - 덮어쓰기 ${matchStats.matchedPassages}, 추가 ${matchStats.newPassages}`})
                 </>
               )}
             </Button>
@@ -533,6 +702,3 @@ export function SheetSelector({ groupName, onRegister }: SheetSelectorProps) {
     </div>
   )
 }
-
-import React from 'react'
-

@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const groupId = searchParams.get('groupId')
     const includeSentences = searchParams.get('includeSentences') === 'true'
     
+    // order_index 정렬 시도, 없으면 created_at으로 fallback
     let query = supabase
       .from('textbooks')
       .select(`
@@ -22,13 +23,39 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
+      .order('order_index', { ascending: true })
       .order('created_at', { ascending: true })
     
     if (groupId) {
       query = query.eq('group_id', groupId)
     }
     
-    const { data, error } = await query
+    let { data, error } = await query
+    
+    // order_index 컬럼이 없는 경우 fallback
+    if (error && error.code === '42703') {
+      let fallbackQuery = supabase
+        .from('textbooks')
+        .select(`
+          *,
+          units (
+            *,
+            passages (
+              *
+              ${includeSentences ? ', sentences (*)' : ''}
+            )
+          )
+        `)
+        .order('created_at', { ascending: true })
+      
+      if (groupId) {
+        fallbackQuery = fallbackQuery.eq('group_id', groupId)
+      }
+      
+      const fallbackResult = await fallbackQuery
+      data = fallbackResult.data
+      error = fallbackResult.error
+    }
     
     if (error) throw error
     
@@ -99,14 +126,37 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // order_index 계산 (그룹 내 마지막 순서)
+    let newOrderIndex: number | undefined
+    try {
+      const { data: maxOrderData } = await supabase
+        .from('textbooks')
+        .select('order_index')
+        .eq('group_id', body.group_id)
+        .order('order_index', { ascending: false })
+        .limit(1)
+        .single()
+      
+      newOrderIndex = (maxOrderData?.order_index ?? -1) + 1
+    } catch {
+      // order_index 컬럼이 없으면 무시
+      newOrderIndex = undefined
+    }
+    
     // 교재 생성
+    const insertData: { name: string; group_id: string; google_sheet_url?: string; order_index?: number } = {
+      name: body.name.trim(),
+      group_id: body.group_id,
+      google_sheet_url: body.google_sheet_url || null
+    }
+    
+    if (newOrderIndex !== undefined) {
+      insertData.order_index = newOrderIndex
+    }
+    
     const { data: textbook, error: textbookError } = await supabase
       .from('textbooks')
-      .insert({
-        name: body.name.trim(),
-        group_id: body.group_id,
-        google_sheet_url: body.google_sheet_url || null
-      })
+      .insert(insertData)
       .select()
       .single()
     

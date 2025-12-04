@@ -4,12 +4,12 @@ import { useState, useCallback, useEffect } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MainContent } from '@/components/layout/MainContent'
 import { RightPanel } from '@/components/layout/RightPanel'
-import { GroupList, TextbookTree, SheetSelector, SplitDetailPanel, TextbookDetail } from '@/components/features/textbook'
+import { TextbookTree, SheetSelector, SplitDetailPanel, TextbookDetail, PassageDetail } from '@/components/features/textbook'
 import { SheetImportProvider } from '@/contexts/SheetImportContext'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
 import { QuestionTypeList, QuestionTypeForm, type QuestionTypeItem } from '@/components/features/question-type'
-import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId } from '@/types'
+import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { FolderTree, Settings, Users, Sparkles } from 'lucide-react'
@@ -23,6 +23,12 @@ export default function AdminPage() {
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState<GroupWithTextbooks | null>(null)
   const [selectedTextbook, setSelectedTextbook] = useState<(TreeNode & { parentGroupId?: string; parentGroupName?: string }) | null>(null)
+  const [selectedPassage, setSelectedPassage] = useState<{
+    id: string
+    name: string
+    unitName: string
+    textbookName: string
+  } | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   // 데이터 유형 상태
@@ -326,12 +332,13 @@ export default function AdminPage() {
     setSelectedTextbook(null)
   }
 
-  const handleSelectNode = (node: TreeNode, parentGroup?: TreeNode) => {
+  const handleSelectNode = (node: TreeNode, parentGroup?: TreeNode, parentTextbook?: TreeNode, parentUnit?: TreeNode) => {
     if (node.type === 'group') {
       const group = groups.find((g) => g.id === node.id)
       if (group) {
         setSelectedGroup(group)
         setSelectedTextbook(null)
+        setSelectedPassage(null)
       }
     } else if (node.type === 'textbook' && parentGroup) {
       setSelectedGroup(null)
@@ -339,6 +346,16 @@ export default function AdminPage() {
         ...node,
         parentGroupId: parentGroup.id,
         parentGroupName: parentGroup.name,
+      })
+      setSelectedPassage(null)
+    } else if (node.type === 'passage' && parentTextbook && parentUnit) {
+      setSelectedGroup(null)
+      setSelectedTextbook(null)
+      setSelectedPassage({
+        id: node.id,
+        name: node.name,
+        unitName: parentUnit.name,
+        textbookName: parentTextbook.name,
       })
     }
   }
@@ -407,6 +424,44 @@ export default function AdminPage() {
     setSelectedGroup(null)
   }
 
+  // 기존 교재 업데이트
+  const handleUpdateTextbook = async (textbookId: string, data: {
+    units: { 
+      name: string
+      passages: { 
+        name: string
+        content?: string
+        koreanTranslation?: string
+        sentences?: import('@/types').ParsedSentence[]
+        splitModel?: string
+        splitConfidence?: number
+      }[] 
+    }[]
+  }) => {
+    try {
+      const response = await fetch(`/api/textbooks/${textbookId}/update`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ units: data.units }),
+      })
+
+      if (response.ok) {
+        await fetchGroups()
+        // 업데이트 완료 후 그룹 확장 유지
+        if (selectedGroup) {
+          setExpandedIds((prev) => new Set([...prev, selectedGroup.id]))
+        }
+        return
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update textbook')
+      }
+    } catch (err) {
+      console.error('Error updating textbook:', err)
+      throw err
+    }
+  }
+
   const handleMoveTextbook = async (targetGroupId: string) => {
     if (!selectedTextbook) return
 
@@ -440,6 +495,165 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error deleting textbook:', error)
       alert('교재 삭제에 실패했습니다.')
+    }
+  }
+
+  // 트리 노드 삭제 핸들러
+  const handleDeleteNode = async (node: TreeNode) => {
+    const typeLabels: Record<string, string> = {
+      group: '그룹',
+      textbook: '교재',
+      unit: '단원',
+      passage: '지문',
+    }
+    
+    const label = typeLabels[node.type] || '항목'
+    const childCount = node.children?.length || 0
+    
+    let message = `"${node.name}" ${label}을(를) 삭제하시겠습니까?`
+    if (childCount > 0) {
+      message += `\n\n⚠️ 하위 ${childCount}개 항목도 함께 삭제됩니다.`
+    }
+    
+    if (!confirm(message)) return
+
+    try {
+      let endpoint = ''
+      switch (node.type) {
+        case 'group':
+          endpoint = `/api/groups/${node.id}`
+          break
+        case 'textbook':
+          endpoint = `/api/textbooks/${node.id}`
+          break
+        case 'unit':
+          endpoint = `/api/units/${node.id}`
+          break
+        case 'passage':
+          endpoint = `/api/passages/${node.id}`
+          break
+        default:
+          throw new Error('Unknown node type')
+      }
+
+      const response = await fetch(endpoint, { method: 'DELETE' })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Failed to delete ${node.type}`)
+      }
+
+      await fetchGroups()
+      
+      // 선택 상태 초기화
+      if (selectedGroup?.id === node.id) setSelectedGroup(null)
+      if (selectedTextbook?.id === node.id) setSelectedTextbook(null)
+      if (selectedPassage?.id === node.id) setSelectedPassage(null)
+      
+    } catch (error) {
+      console.error(`Error deleting ${node.type}:`, error)
+      alert(`${label} 삭제에 실패했습니다.`)
+    }
+  }
+
+  // 트리 노드 이름 변경 핸들러 (그룹, 교재, 단원 지원)
+  const handleRenameNode = async (node: TreeNode, newName: string) => {
+    const typeLabels: Record<string, string> = {
+      group: '그룹',
+      textbook: '교재',
+      unit: '단원',
+    }
+    
+    if (!['group', 'textbook', 'unit'].includes(node.type)) return
+    
+    try {
+      let endpoint = ''
+      switch (node.type) {
+        case 'group':
+          endpoint = `/api/groups/${node.id}`
+          break
+        case 'textbook':
+          endpoint = `/api/textbooks/${node.id}`
+          break
+        case 'unit':
+          endpoint = `/api/units/${node.id}`
+          break
+      }
+      
+      const response = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to rename ${node.type}`)
+      }
+      
+      await fetchGroups()
+    } catch (error) {
+      console.error(`Error renaming ${node.type}:`, error)
+      alert(`${typeLabels[node.type]} 이름 변경에 실패했습니다.`)
+    }
+  }
+
+  // 그룹 순서 변경 핸들러
+  const handleReorderGroups = async (reorderedGroups: { id: string; order_index: number }[]) => {
+    try {
+      const response = await fetch('/api/groups/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups: reorderedGroups }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reorder groups')
+      }
+
+      await fetchGroups()
+    } catch (error) {
+      console.error('Error reordering groups:', error)
+      alert('그룹 순서 변경에 실패했습니다.')
+    }
+  }
+
+  // 교재 순서 변경 핸들러
+  const handleReorderTextbooks = async (groupId: string, reorderedTextbooks: { id: string; order_index: number }[]) => {
+    try {
+      const response = await fetch('/api/textbooks/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ textbooks: reorderedTextbooks }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reorder textbooks')
+      }
+
+      await fetchGroups()
+    } catch (error) {
+      console.error('Error reordering textbooks:', error)
+      alert('교재 순서 변경에 실패했습니다.')
+    }
+  }
+
+  // 단원 순서 변경 핸들러
+  const handleReorderUnits = async (textbookId: string, reorderedUnits: { id: string; order_index: number }[]) => {
+    try {
+      const response = await fetch('/api/units/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ units: reorderedUnits }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reorder units')
+      }
+
+      await fetchGroups()
+    } catch (error) {
+      console.error('Error reordering units:', error)
+      alert('단원 순서 변경에 실패했습니다.')
     }
   }
 
@@ -478,23 +692,59 @@ export default function AdminPage() {
         {/* 교재관리 탭 */}
         {activeTab === '교재관리' && (
           <div className="space-y-3">
-            <GroupList
-              groups={groups}
-              isLoading={isLoadingGroups}
-              selectedGroupId={selectedGroup?.id || null}
-              onSelectGroup={handleSelectGroup}
-              onCreateGroup={handleCreateGroup}
-              onDeleteGroup={handleDeleteGroup}
-            />
-            {groups.length > 0 && (
+            {/* 그룹 생성 UI */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="그룹명 입력"
+                className="flex-1 px-3 py-2 text-sm border border-border rounded-md bg-background"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const input = e.target as HTMLInputElement
+                    if (input.value.trim()) {
+                      handleCreateGroup(input.value.trim())
+                      input.value = ''
+                    }
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const input = document.querySelector('input[placeholder="그룹명 입력"]') as HTMLInputElement
+                  if (input?.value.trim()) {
+                    handleCreateGroup(input.value.trim())
+                    input.value = ''
+                  }
+                }}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                등록
+              </button>
+            </div>
+
+            {/* 트리 */}
+            {isLoadingGroups ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                로딩 중...
+              </div>
+            ) : groups.length > 0 ? (
               <div className="border border-border rounded-md bg-muted/50">
                 <TextbookTree
                   nodes={treeNodes}
-                  selectedId={selectedGroup?.id || selectedTextbook?.id || null}
+                  selectedId={selectedGroup?.id || selectedTextbook?.id || selectedPassage?.id || null}
                   onSelect={handleSelectNode}
                   expandedIds={expandedIds}
                   onToggleExpand={handleToggleExpand}
+                  onDelete={handleDeleteNode}
+                  onRename={handleRenameNode}
+                  onReorderGroups={handleReorderGroups}
+                  onReorderTextbooks={handleReorderTextbooks}
+                  onReorderUnits={handleReorderUnits}
                 />
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                그룹을 추가하세요
               </div>
             )}
           </div>
@@ -563,11 +813,13 @@ export default function AdminPage() {
           />
         )}
 
-        {/* 설정 - 설정 */}
-        {activeTab === '설정' && settingMenu === '설정' && (
-          <div className="py-8 text-center">
-            <Settings className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
-            <p className="text-sm text-muted-foreground">시스템 설정 (향후 구현)</p>
+        {/* 설정 - 시스템 설정 */}
+        {activeTab === '설정' && settingMenu === '시스템 설정' && (
+          <div className="space-y-2">
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-2">⚙️ AI 문장 분리</p>
+              <p className="text-sm font-medium">문장 분리 모델/모드 설정</p>
+            </div>
           </div>
         )}
       </Sidebar>
@@ -576,7 +828,23 @@ export default function AdminPage() {
       <MainContent activeTab={activeTab} settingMenu={settingMenu}>
         {/* 교재관리 */}
         {activeTab === '교재관리' && selectedGroup && (
-          <SheetSelector groupName={selectedGroup.name} onRegister={handleRegisterTextbook} />
+          <SheetSelector 
+            groupName={selectedGroup.name} 
+            textbooks={selectedGroup.textbooks?.map(t => ({
+              id: t.id,
+              name: t.name,
+              units: t.children?.map(u => ({
+                id: u.id,
+                name: u.name,
+                passages: u.children?.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                }))
+              }))
+            })) || []}
+            onRegister={handleRegisterTextbook}
+            onUpdate={handleUpdateTextbook}
+          />
         )}
         {activeTab === '교재관리' && selectedTextbook && (
           <TextbookDetail
@@ -618,7 +886,16 @@ export default function AdminPage() {
             }}
           />
         )}
-        {activeTab === '교재관리' && !selectedGroup && !selectedTextbook && (
+        {activeTab === '교재관리' && selectedPassage && (
+          <PassageDetail
+            passageId={selectedPassage.id}
+            passageName={selectedPassage.name}
+            unitName={selectedPassage.unitName}
+            textbookName={selectedPassage.textbookName}
+            onBack={() => setSelectedPassage(null)}
+          />
+        )}
+        {activeTab === '교재관리' && !selectedGroup && !selectedTextbook && !selectedPassage && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <FolderTree className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
@@ -714,14 +991,9 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* 설정 - 설정 */}
-        {activeTab === '설정' && settingMenu === '설정' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Settings className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">시스템 설정 영역 (향후 구현)</p>
-            </div>
-          </div>
+        {/* 설정 - 시스템 설정 */}
+        {activeTab === '설정' && settingMenu === '시스템 설정' && (
+          <SystemSettings />
         )}
       </MainContent>
 
@@ -785,4 +1057,85 @@ export default function AdminPage() {
   }
 
   return mainLayout
+}
+
+// 시스템 설정 컴포넌트
+function SystemSettings() {
+  const [splitModel, setSplitModel] = useState<ModelId>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('splitModel') as ModelId) || 'gemini-2.0-flash'
+    }
+    return 'gemini-2.0-flash'
+  })
+  
+  const [splitMode, setSplitMode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('splitMode') || 'parallel'
+    }
+    return 'parallel'
+  })
+
+  const handleSaveSettings = () => {
+    localStorage.setItem('splitModel', splitModel)
+    localStorage.setItem('splitMode', splitMode)
+    alert('설정이 저장되었습니다.')
+  }
+
+  return (
+    <div className="p-6 max-w-2xl">
+      <h2 className="text-xl font-bold mb-6">⚙️ 시스템 설정</h2>
+      
+      {/* 문장 분리 설정 */}
+      <div className="bg-white rounded-lg border p-6 space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-blue-600" />
+            AI 문장 분리 설정
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            교재 등록 시 사용할 AI 모델과 분리 모드를 설정합니다.
+          </p>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">AI 모델</label>
+            <select
+              value={splitModel}
+              onChange={(e) => setSplitModel(e.target.value as ModelId)}
+              className="w-full p-2 border rounded-md bg-background"
+            >
+              {SENTENCE_SPLIT_MODELS.map((model) => (
+                <option key={model.value} value={model.value}>
+                  {model.label} - {model.description}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-2">분리 모드</label>
+            <select
+              value={splitMode}
+              onChange={(e) => setSplitMode(e.target.value)}
+              className="w-full p-2 border rounded-md bg-background"
+            >
+              <option value="parallel">🔗 병렬 매칭 (추천)</option>
+              <option value="ai-verify">✅ AI 검증</option>
+              <option value="hybrid">🔄 하이브리드</option>
+              <option value="regex">📝 Regex (무료)</option>
+              <option value="ai">🤖 AI Only</option>
+            </select>
+          </div>
+        </div>
+        
+        <button
+          onClick={handleSaveSettings}
+          className="w-full py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        >
+          설정 저장
+        </button>
+      </div>
+    </div>
+  )
 }

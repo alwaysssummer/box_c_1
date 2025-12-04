@@ -370,6 +370,7 @@ Output JSON only (no markdown):
  * - 유니코드 공백, 전각 공백, 줄바꿈 등 처리
  */
 function normalizeText(text: string): string {
+  if (!text) return ''
   return text
     // 모든 종류의 공백/줄바꿈을 단일 공백으로
     .replace(/[\s\u00A0\u2000-\u200B\u2028\u2029\u3000\uFEFF]+/g, ' ')
@@ -378,6 +379,10 @@ function normalizeText(text: string): string {
     // 다양한 따옴표를 일반 따옴표로 통일 (', ', ", " 등)
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    // 일반 따옴표 제거 (AI가 추가하는 경우 대응)
+    .replace(/^["']+|["']+$/g, '')  // 문자열 양끝 따옴표 제거
+    .replace(/["']\s*$/g, '')  // 끝의 따옴표 제거
+    .replace(/^\s*["']/g, '')  // 시작의 따옴표 제거
     // 앞뒤 공백 제거
     .trim()
 }
@@ -434,9 +439,13 @@ async function extractParallelSentences(
   koreanText: string,
   model: ModelId
 ): Promise<SentenceSplitResult> {
-  // 원본 저장 (검증용) - 절대 불가침 영역
-  const originalEnglish = englishText.trim()
-  const originalKorean = koreanText.trim()
+  // 줄바꿈을 공백으로 정규화 (셀 내 줄바꿈 처리)
+  const normalizedEnglish = englishText.trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ')
+  const normalizedKorean = koreanText.trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ')
+  
+  // 원본 저장 (검증용) - 정규화된 버전 사용
+  const originalEnglish = normalizedEnglish
+  const originalKorean = normalizedKorean
   
   const prompt = `You are extracting sentence pairs from English text and its Korean translation.
 
@@ -451,10 +460,10 @@ Split into sentence pairs. Each pair = one English sentence + its corresponding 
 
 **INPUT:**
 English:
-"${englishText}"
+"${normalizedEnglish}"
 
 Korean:
-"${koreanText}"
+"${normalizedKorean}"
 
 **OUTPUT (JSON only, no markdown):**
 {
@@ -536,7 +545,7 @@ REMEMBER: Report issues but NEVER modify any text!`
     // ═══════════════════════════════════════════════════════════
     // 🛡️ 영어 원문 검증 (절대 불가침) - 유연한 비교
     // ═══════════════════════════════════════════════════════════
-    const extractedEnglish = pairs.map(p => p.english).join(' ')
+    const extractedEnglish = pairs.map(p => p.english || '').filter(Boolean).join(' ')
     const englishComparison = compareTextsFlexibly(originalEnglish, extractedEnglish)
     
     if (!englishComparison.isMatch) {
@@ -550,7 +559,7 @@ REMEMBER: Report issues but NEVER modify any text!`
     // ═══════════════════════════════════════════════════════════
     // 🛡️ 한글 해석 검증 (유연하게 처리 - 경고만 표시)
     // ═══════════════════════════════════════════════════════════
-    const extractedKorean = pairs.map(p => p.korean).join(' ')
+    const extractedKorean = pairs.map(p => p.korean || '').filter(Boolean).join(' ')
     const koreanComparison = compareTextsFlexibly(originalKorean, extractedKorean)
     
     const koreanIssues: KoreanIssue[] = []
@@ -600,6 +609,12 @@ REMEMBER: Report issues but NEVER modify any text!`
     
     // 추가 품질 체크 (자동 감지)
     for (const pair of pairs) {
+      // 영어 원문 누락 체크
+      if (!pair.english || pair.english.trim().length === 0) {
+        console.warn(`⚠️ 문장 ${pair.no}의 영어 원문이 없습니다 - 건너뜀`)
+        continue
+      }
+      
       // 한글 번역 누락
       if (!pair.korean || pair.korean.trim().length === 0) {
         koreanIssues.push({
@@ -612,7 +627,7 @@ REMEMBER: Report issues but NEVER modify any text!`
       }
       
       // 한글이 너무 짧음 (영어 대비) - 임계값 완화: 단어 × 1.2
-      const enWords = pair.english.split(/\s+/).length
+      const enWords = (pair.english || '').split(/\s+/).length
       const krChars = (pair.korean?.match(/[가-힣]/g) || []).length
       // 영어 10단어 이상이고, 한글이 영어 단어 수 × 1.2보다 적은 경우만 경고
       if (enWords > 10 && krChars < enWords * 1.2) {
@@ -638,15 +653,17 @@ REMEMBER: Report issues but NEVER modify any text!`
       }
     }
     
-    // 결과 생성
-    const sentences: ParsedSentence[] = pairs.map(p => ({
-      no: p.no,
-      content: p.english,  // 원문 그대로
-      koreanTranslation: p.korean,  // 해석 그대로
-      wordCount: p.english.split(/\s+/).length,
-      confidence: p.confidence || 0.95,
-      issues: [],
-    }))
+    // 결과 생성 (유효한 pair만)
+    const sentences: ParsedSentence[] = pairs
+      .filter(p => p.english && p.english.trim().length > 0)
+      .map(p => ({
+        no: p.no,
+        content: p.english,  // 원문 그대로
+        koreanTranslation: p.korean || '',  // 해석 그대로
+        wordCount: (p.english || '').split(/\s+/).length,
+        confidence: p.confidence || 0.95,
+        issues: [],
+      }))
     
     return {
       sentences,

@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 const tabs: ActiveTab[] = ['회원관리', '교재관리', '설정']
-const settingMenus: SettingMenu[] = ['프롬프트', '데이터 유형', '문제 유형', '설정']
+const settingMenus: SettingMenu[] = ['프롬프트', '데이터 유형', '문제 유형', '시스템 설정']
 
 export function Sidebar({
   activeTab,

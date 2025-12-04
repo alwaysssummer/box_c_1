@@ -3,7 +3,7 @@ export * from './database'
 
 // UI 관련 타입
 export type ActiveTab = '회원관리' | '교재관리' | '설정'
-export type SettingMenu = '프롬프트' | '데이터 유형' | '문제 유형' | '설정'
+export type SettingMenu = '프롬프트' | '데이터 유형' | '문제 유형' | '시스템 설정'
 
 // 프롬프트 카테고리
 export const PROMPT_CATEGORIES = [

@@ -6,10 +6,23 @@ export async function GET() {
   try {
     const supabase = await createClient()
     
-    const { data, error } = await supabase
+    // order_index 컬럼이 있는지 먼저 시도, 없으면 created_at으로 정렬
+    let { data, error } = await supabase
       .from('groups')
       .select('*')
+      .order('order_index', { ascending: true })
       .order('created_at', { ascending: true })
+    
+    // order_index 컬럼이 없는 경우 fallback
+    if (error && error.code === '42703') {
+      const fallbackResult = await supabase
+        .from('groups')
+        .select('*')
+        .order('created_at', { ascending: true })
+      
+      data = fallbackResult.data
+      error = fallbackResult.error
+    }
     
     if (error) throw error
     
@@ -36,9 +49,33 @@ export async function POST(request: NextRequest) {
       )
     }
     
+    // order_index 컬럼이 있는지 확인하고 새 그룹 추가
+    let newOrderIndex: number | undefined
+    try {
+      const { data: maxOrderData } = await supabase
+        .from('groups')
+        .select('order_index')
+        .order('order_index', { ascending: false })
+        .limit(1)
+        .single()
+      
+      newOrderIndex = (maxOrderData?.order_index ?? -1) + 1
+    } catch {
+      // order_index 컬럼이 없으면 무시
+      newOrderIndex = undefined
+    }
+    
+    const insertData: { name: string; order_index?: number } = { 
+      name: body.name.trim(),
+    }
+    
+    if (newOrderIndex !== undefined) {
+      insertData.order_index = newOrderIndex
+    }
+    
     const { data, error } = await supabase
       .from('groups')
-      .insert({ name: body.name.trim() })
+      .insert(insertData)
       .select()
       .single()
     
