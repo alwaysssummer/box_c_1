@@ -1,9 +1,8 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { BookOpen, Plus, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { SelectableList } from '@/components/ui/selectable-list'
+import { BookOpen } from 'lucide-react'
 
 export interface QuestionTypeItem {
   id: string
@@ -35,55 +34,26 @@ export function QuestionTypeList({
   onAdd,
 }: QuestionTypeListProps) {
   return (
-    <div>
-      {/* 추가 버튼 */}
-      <Button onClick={onAdd} className="w-full mb-2" size="sm">
-        <Plus className="w-4 h-4 mr-1" />
-        문제 유형 추가
-      </Button>
-
-      {/* 목록 */}
-      <div className="border border-border rounded-md bg-muted/50 max-h-80 overflow-auto">
-        {isLoading ? (
-          <div className="py-8 text-center">
-            <Loader2 className="w-6 h-6 mx-auto text-muted-foreground animate-spin mb-2" />
-            <p className="text-sm text-muted-foreground">로딩 중...</p>
+    <SelectableList
+      items={questionTypes}
+      isLoading={isLoading}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      onAdd={onAdd}
+      emptyIcon={<BookOpen className="w-8 h-8" />}
+      emptyText="등록된 문제 유형이 없습니다"
+      addButtonText="문제 유형 추가"
+      getItemId={(qt) => qt.id}
+      renderItem={(qt) => (
+        <>
+          <div className="font-medium text-sm">{qt.name}</div>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="outline" className="text-xs">
+              {qt.dataTypeList.length}개 데이터 유형
+            </Badge>
           </div>
-        ) : questionTypes.length === 0 ? (
-          <div className="py-8 text-center">
-            <BookOpen className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
-            <p className="text-sm text-muted-foreground">
-              등록된 문제 유형이 없습니다
-            </p>
-          </div>
-        ) : (
-          <div className="py-1">
-            {questionTypes.map((qt) => (
-              <div
-                key={qt.id}
-                onClick={() => onSelect(qt)}
-                className={cn(
-                  'px-3 py-2 cursor-pointer transition-colors',
-                  selectedId === qt.id
-                    ? 'bg-primary/10 text-primary'
-                    : 'hover:bg-muted'
-                )}
-              >
-                <div className="font-medium text-sm">{qt.name}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-xs">
-                    {qt.dataTypeList.length}개 데이터 유형
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    />
   )
 }
-
-
-
-
