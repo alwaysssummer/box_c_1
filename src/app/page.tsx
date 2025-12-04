@@ -2,21 +2,26 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
-import { MainContent } from '@/components/layout/MainContent'
+import { MainContent, type ContentMode } from '@/components/layout/MainContent'
 import { RightPanel } from '@/components/layout/RightPanel'
 import { TextbookTree, SheetSelector, SplitDetailPanel, TextbookDetail, PassageDetail } from '@/components/features/textbook'
 import { SheetImportProvider } from '@/contexts/SheetImportContext'
+import { DataGenerateProvider } from '@/contexts/DataGenerateContext'
+import { DataGenerator, DataGeneratePanel } from '@/components/features/data-generate'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
 import { QuestionTypeList, QuestionTypeForm, type QuestionTypeItem } from '@/components/features/question-type'
 import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { FolderTree, Settings, Users, Sparkles } from 'lucide-react'
+import { FolderTree, Settings, Users, Sparkles, Database } from 'lucide-react'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('교재관리')
   const [settingMenu, setSettingMenu] = useState<SettingMenu>('데이터 유형')
+  
+  // 교재관리 서브 모드 (문장분리, 데이터 생성, 문제 생성)
+  const [contentMode, setContentMode] = useState<ContentMode>('문장분리')
   
   // 교재관리 상태
   const [groups, setGroups] = useState<GroupWithTextbooks[]>([])
@@ -659,8 +664,10 @@ export default function AdminPage() {
 
   const treeNodes = convertToTreeNodes(groups)
 
-  // 교재관리 탭에서 그룹 선택 시 Provider로 감싸기
-  const isSheetImportMode = activeTab === '교재관리' && selectedGroup !== null
+  // 교재관리 탭에서 문장분리 모드이고 그룹 선택 시 Provider로 감싸기
+  const isSheetImportMode = activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup !== null
+  // 데이터 생성 모드
+  const isDataGenerateMode = activeTab === '교재관리' && contentMode === '데이터 생성'
 
   const mainLayout = (
     <div className="h-screen flex bg-muted/30">
@@ -758,76 +765,17 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* 설정 - 프롬프트 */}
-        {activeTab === '설정' && settingMenu === '프롬프트' && (
-          <PromptList
-            prompts={prompts}
-            selectedPromptId={selectedPrompt?.id || null}
-            onSelectPrompt={(prompt) => {
-              setSelectedPrompt(prompt)
-              setIsEditingPrompt(false)
-            }}
-            onAddNew={() => {
-              setSelectedPrompt(null)
-              setIsEditingPrompt(true)
-            }}
-            isLoading={isLoadingPrompts}
-          />
-        )}
-
-        {/* 설정 - 데이터 유형 */}
-        {activeTab === '설정' && settingMenu === '데이터 유형' && (
-          <DataTypeList
-            dataTypes={dataTypes}
-            isLoading={isLoadingDataTypes}
-            selectedId={selectedDataType?.id || null}
-            onSelect={(dt) => {
-              setSelectedDataType(dt)
-              setIsEditingDataType(false)
-            }}
-            onAdd={() => {
-              setSelectedDataType(null)
-              setIsEditingDataType(true)
-            }}
-          />
-        )}
-
-        {/* 설정 - 문제 유형 */}
-        {activeTab === '설정' && settingMenu === '문제 유형' && (
-          <QuestionTypeList
-            questionTypes={questionTypes}
-            isLoading={isLoadingQuestionTypes}
-            selectedId={selectedQuestionType?.id || null}
-            onSelect={(qt) => {
-              setSelectedQuestionType(qt)
-              setIsEditingQuestionType(false)
-              setChoiceLayout(qt.choice_layout)
-              setChoiceMarker(qt.choice_marker)
-            }}
-            onAdd={() => {
-              setSelectedQuestionType(null)
-              setIsEditingQuestionType(true)
-              setChoiceLayout('vertical')
-              setChoiceMarker('circle')
-            }}
-          />
-        )}
-
-        {/* 설정 - 시스템 설정 */}
-        {activeTab === '설정' && settingMenu === '시스템 설정' && (
-          <div className="space-y-2">
-            <div className="p-3 bg-muted/50 rounded-lg">
-              <p className="text-xs text-muted-foreground mb-2">⚙️ AI 문장 분리</p>
-              <p className="text-sm font-medium">문장 분리 모델/모드 설정</p>
-            </div>
-          </div>
-        )}
       </Sidebar>
 
       {/* 중앙 메인 콘텐츠 */}
-      <MainContent activeTab={activeTab} settingMenu={settingMenu}>
-        {/* 교재관리 */}
-        {activeTab === '교재관리' && selectedGroup && (
+      <MainContent 
+        activeTab={activeTab} 
+        settingMenu={settingMenu}
+        contentMode={contentMode}
+        onContentModeChange={setContentMode}
+      >
+        {/* 교재관리 - 문장분리 모드 */}
+        {activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup && (
           <SheetSelector 
             groupName={selectedGroup.name} 
             textbooks={selectedGroup.textbooks?.map(t => ({
@@ -846,7 +794,7 @@ export default function AdminPage() {
             onUpdate={handleUpdateTextbook}
           />
         )}
-        {activeTab === '교재관리' && selectedTextbook && (
+        {activeTab === '교재관리' && contentMode === '문장분리' && selectedTextbook && (
           <TextbookDetail
             textbook={selectedTextbook}
             groups={groups}
@@ -886,7 +834,7 @@ export default function AdminPage() {
             }}
           />
         )}
-        {activeTab === '교재관리' && selectedPassage && (
+        {activeTab === '교재관리' && contentMode === '문장분리' && selectedPassage && (
           <PassageDetail
             passageId={selectedPassage.id}
             passageName={selectedPassage.name}
@@ -895,11 +843,26 @@ export default function AdminPage() {
             onBack={() => setSelectedPassage(null)}
           />
         )}
-        {activeTab === '교재관리' && !selectedGroup && !selectedTextbook && !selectedPassage && (
+        {activeTab === '교재관리' && contentMode === '문장분리' && !selectedGroup && !selectedTextbook && !selectedPassage && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <FolderTree className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
               <p className="text-muted-foreground">좌측에서 그룹 또는 교재를 선택하세요</p>
+            </div>
+          </div>
+        )}
+
+        {/* 교재관리 - 데이터 생성 모드 */}
+        {activeTab === '교재관리' && contentMode === '데이터 생성' && (
+          <DataGenerator />
+        )}
+
+        {/* 교재관리 - 문제 생성 모드 (향후 구현) */}
+        {activeTab === '교재관리' && contentMode === '문제 생성' && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <Database className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground">문제 생성 기능은 향후 구현 예정입니다</p>
             </div>
           </div>
         )}
@@ -932,7 +895,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <Sparkles className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">좌측에서 프롬프트를 선택하거나 새로 추가하세요</p>
+              <p className="text-muted-foreground">우측에서 프롬프트를 선택하거나 새로 추가하세요</p>
             </div>
           </div>
         )}
@@ -956,7 +919,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <Settings className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">좌측에서 데이터 유형을 선택하거나 새로 추가하세요</p>
+              <p className="text-muted-foreground">우측에서 데이터 유형을 선택하거나 새로 추가하세요</p>
             </div>
           </div>
         )}
@@ -986,7 +949,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <Settings className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">좌측에서 문제 유형을 선택하거나 새로 추가하세요</p>
+              <p className="text-muted-foreground">우측에서 문제 유형을 선택하거나 새로 추가하세요</p>
             </div>
           </div>
         )}
@@ -1002,58 +965,136 @@ export default function AdminPage() {
         title={
           isSheetImportMode
             ? '📝 문장 분리'
-            : activeTab === '설정' && settingMenu === '문제 유형' && (isEditingQuestionType || selectedQuestionType)
-              ? '레이아웃 옵션'
-              : '확장 기능'
+            : isDataGenerateMode
+              ? '📊 데이터 생성'
+              : activeTab === '설정' && settingMenu === '프롬프트'
+                ? '프롬프트 목록'
+                : activeTab === '설정' && settingMenu === '데이터 유형'
+                  ? '데이터 유형 목록'
+                  : activeTab === '설정' && settingMenu === '문제 유형'
+                    ? '문제 유형 목록'
+                    : '확장 기능'
         }
       >
-        {activeTab === '설정' && settingMenu === '문제 유형' && (isEditingQuestionType || selectedQuestionType) ? (
+        {/* 설정 - 프롬프트 목록 */}
+        {activeTab === '설정' && settingMenu === '프롬프트' && (
+          <PromptList
+            prompts={prompts}
+            selectedPromptId={selectedPrompt?.id || null}
+            onSelectPrompt={(prompt) => {
+              setSelectedPrompt(prompt)
+              setIsEditingPrompt(false)
+            }}
+            onAddNew={() => {
+              setSelectedPrompt(null)
+              setIsEditingPrompt(true)
+            }}
+            isLoading={isLoadingPrompts}
+          />
+        )}
+
+        {/* 설정 - 데이터 유형 목록 */}
+        {activeTab === '설정' && settingMenu === '데이터 유형' && (
+          <DataTypeList
+            dataTypes={dataTypes}
+            isLoading={isLoadingDataTypes}
+            selectedId={selectedDataType?.id || null}
+            onSelect={(dt) => {
+              setSelectedDataType(dt)
+              setIsEditingDataType(false)
+            }}
+            onAdd={() => {
+              setSelectedDataType(null)
+              setIsEditingDataType(true)
+            }}
+          />
+        )}
+
+        {/* 설정 - 문제 유형 목록 */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && (
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">선택지 배열</label>
-              <RadioGroup value={choiceLayout} onValueChange={setChoiceLayout} disabled={!isEditingQuestionType}>
-                {CHOICE_LAYOUTS.map((opt) => (
-                  <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
-                    <RadioGroupItem value={opt.value} id={`layout-${opt.value}`} />
-                    <label htmlFor={`layout-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
+            <QuestionTypeList
+              questionTypes={questionTypes}
+              isLoading={isLoadingQuestionTypes}
+              selectedId={selectedQuestionType?.id || null}
+              onSelect={(qt) => {
+                setSelectedQuestionType(qt)
+                setIsEditingQuestionType(false)
+                setChoiceLayout(qt.choice_layout)
+                setChoiceMarker(qt.choice_marker)
+              }}
+              onAdd={() => {
+                setSelectedQuestionType(null)
+                setIsEditingQuestionType(true)
+                setChoiceLayout('vertical')
+                setChoiceMarker('circle')
+              }}
+            />
 
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">선택지 번호</label>
-              <RadioGroup value={choiceMarker} onValueChange={setChoiceMarker} disabled={!isEditingQuestionType}>
-                {CHOICE_MARKERS.map((opt) => (
-                  <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
-                    <RadioGroupItem value={opt.value} id={`marker-${opt.value}`} />
-                    <label htmlFor={`marker-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
+            {/* 레이아웃 옵션 (선택된 문제 유형이 있을 때만) */}
+            {(isEditingQuestionType || selectedQuestionType) && (
+              <div className="border-t border-border pt-4 space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">선택지 배열</label>
+                  <RadioGroup value={choiceLayout} onValueChange={setChoiceLayout} disabled={!isEditingQuestionType}>
+                    {CHOICE_LAYOUTS.map((opt) => (
+                      <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
+                        <RadioGroupItem value={opt.value} id={`layout-${opt.value}`} />
+                        <label htmlFor={`layout-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
 
-            <div className="border-t border-border pt-4">
-              <label className="text-sm font-medium text-foreground mb-2 block">출력물 구성</label>
-              <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
-                <p>📄 문제지.pdf (문제만)</p>
-                <p>📄 정답지.pdf (정답만)</p>
-                <p>📄 해설지.pdf (정답+해설)</p>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">선택지 번호</label>
+                  <RadioGroup value={choiceMarker} onValueChange={setChoiceMarker} disabled={!isEditingQuestionType}>
+                    {CHOICE_MARKERS.map((opt) => (
+                      <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
+                        <RadioGroupItem value={opt.value} id={`marker-${opt.value}`} />
+                        <label htmlFor={`marker-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <label className="text-sm font-medium text-foreground mb-2 block">출력물 구성</label>
+                  <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
+                    <p>📄 문제지.pdf (문제만)</p>
+                    <p>📄 정답지.pdf (정답만)</p>
+                    <p>📄 해설지.pdf (정답+해설)</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
-        ) : isSheetImportMode ? (
-          <SplitDetailPanel />
-        ) : (
+        )}
+
+        {/* 교재관리 - 문장 분리 패널 */}
+        {isSheetImportMode && <SplitDetailPanel />}
+
+        {/* 교재관리 - 데이터 생성 패널 */}
+        {isDataGenerateMode && (
+          <DataGeneratePanel />
+        )}
+
+        {/* 기본 메시지 */}
+        {!isSheetImportMode && !isDataGenerateMode && activeTab !== '설정' && (
           <p className="text-muted-foreground text-sm">현재 작업과 관련된 확장 기능이 여기에 표시됩니다.</p>
         )}
       </RightPanel>
     </div>
   )
 
-  // 교재관리 모드일 때만 Provider로 감싸기
+  // 교재관리 - 문장분리 모드일 때 SheetImportProvider로 감싸기
   if (isSheetImportMode) {
     return <SheetImportProvider>{mainLayout}</SheetImportProvider>
+  }
+
+  // 교재관리 - 데이터 생성 모드일 때 DataGenerateProvider로 감싸기
+  if (isDataGenerateMode) {
+    return <DataGenerateProvider>{mainLayout}</DataGenerateProvider>
   }
 
   return mainLayout

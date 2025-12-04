@@ -417,6 +417,11 @@ export interface Database {
           result: Json | null
           status: 'pending' | 'processing' | 'completed' | 'failed'
           error_message: string | null
+          model_used: string | null
+          confidence: number | null
+          response_time: number | null
+          input_tokens: number | null
+          output_tokens: number | null
           created_at: string
           updated_at: string
         }
@@ -428,6 +433,11 @@ export interface Database {
           result?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
+          model_used?: string | null
+          confidence?: number | null
+          response_time?: number | null
+          input_tokens?: number | null
+          output_tokens?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -439,6 +449,11 @@ export interface Database {
           result?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
+          model_used?: string | null
+          confidence?: number | null
+          response_time?: number | null
+          input_tokens?: number | null
+          output_tokens?: number | null
           created_at?: string
           updated_at?: string
         }
