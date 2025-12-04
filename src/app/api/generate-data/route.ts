@@ -188,7 +188,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 데이터 유형 조회 (프롬프트 정보 포함)
-    const { data: dataType, error: dataTypeError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: dataType, error: dataTypeError } = await (supabase as any)
       .from('data_types')
       .select(`
         *,
@@ -210,7 +211,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. 프롬프트 확인
-    const promptContent = dataType.prompt?.content || dataType.prompt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const promptContent = (dataType as any).prompt?.content || (dataType as any).prompt
     if (!promptContent) {
       return NextResponse.json<GenerateDataResponse>(
         { success: false, error: '데이터 유형에 연결된 프롬프트가 없습니다' },
@@ -251,8 +253,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. 모델 결정
-    const model = requestedModel || (dataType.recommended_model as ModelId) || 'gpt-4o-mini'
-    const modelInfo = AI_MODELS[model]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dtAny = dataType as any
+    const model = (requestedModel || dtAny.recommended_model || 'gpt-4o-mini') as ModelId
+    const modelInfo = AI_MODELS[model] as { provider: string; name: string; description: string } | undefined
     
     if (!modelInfo) {
       return NextResponse.json<GenerateDataResponse>(
@@ -266,7 +270,7 @@ export async function POST(request: NextRequest) {
     
     // 시스템 프롬프트 구성
     let systemPrompt = '당신은 영어 교육 전문가입니다. 반드시 JSON 형식으로만 응답하세요.'
-    const outputSchema = dataType.prompt?.output_schema || dataType.output_schema
+    const outputSchema = dtAny.prompt?.output_schema || dtAny.output_schema
     if (outputSchema) {
       systemPrompt += `\n\n다음 JSON 스키마를 엄격히 따르세요:\n${typeof outputSchema === 'string' ? outputSchema : JSON.stringify(outputSchema, null, 2)}`
     }
@@ -312,7 +316,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. DB에 저장 (UPSERT)
-    const { data: savedData, error: saveError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: savedData, error: saveError } = await (supabase as any)
       .from('generated_data')
       .upsert({
         passage_id: passageId,
@@ -381,7 +386,8 @@ export async function POST(request: NextRequest) {
     // 실패 상태로 DB 저장 시도
     if (body.passageId && body.dataTypeId) {
       const supabase = await createClient()
-      await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
         .from('generated_data')
         .upsert({
           passage_id: body.passageId,
@@ -469,4 +475,6 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+
 

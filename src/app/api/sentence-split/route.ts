@@ -98,7 +98,11 @@ Korean translation (for reference, try to match sentence counts):
 "${koreanText}"` : ''}`
 
   let resultText = ''
-  const modelInfo = AI_MODELS[model]
+  const modelInfo = AI_MODELS[model] as { provider: string; name: string; description: string } | undefined
+  
+  if (!modelInfo) {
+    throw new Error(`Unsupported model: ${model}`)
+  }
 
   try {
     switch (modelInfo.provider) {
@@ -253,11 +257,14 @@ Output JSON only (no markdown):
   "corrections": ["list of corrections made, or empty if none"]
 }`
 
-  const modelInfo = AI_MODELS[model]
+  const modelInfo2 = AI_MODELS[model] as { provider: string; name: string; description: string } | undefined
+  if (!modelInfo2) {
+    throw new Error(`Unsupported model: ${model}`)
+  }
   let resultText = ''
 
   try {
-    switch (modelInfo.provider) {
+    switch (modelInfo2.provider) {
       case 'openai': {
         const client = getOpenAI()
         if (!client) throw new Error('OpenAI API key not configured')
@@ -293,7 +300,7 @@ Output JSON only (no markdown):
         break
       }
       default:
-        throw new Error(`Unsupported provider: ${modelInfo.provider}`)
+        throw new Error(`Unsupported provider: ${modelInfo2.provider}`)
     }
 
     const parsed = JSON.parse(resultText)
@@ -483,11 +490,14 @@ Korean:
 
 REMEMBER: Report issues but NEVER modify any text!`
 
-  const modelInfo = AI_MODELS[model]
+  const modelInfo3 = AI_MODELS[model] as { provider: string; name: string; description: string } | undefined
+  if (!modelInfo3) {
+    throw new Error(`Unsupported model: ${model}`)
+  }
   let resultText = ''
 
   try {
-    switch (modelInfo.provider) {
+    switch (modelInfo3.provider) {
       case 'openai': {
         const client = getOpenAI()
         if (!client) throw new Error('OpenAI API key not configured')
@@ -534,7 +544,7 @@ REMEMBER: Report issues but NEVER modify any text!`
         break
       }
       default:
-        throw new Error(`Unsupported provider: ${modelInfo.provider}`)
+        throw new Error(`Unsupported provider: ${modelInfo3.provider}`)
     }
 
     console.log(`📋 AI 응답 파싱 중...`)
@@ -699,7 +709,7 @@ REMEMBER: Report issues but NEVER modify any text!`
     }
     errorWithInfo.aiError = {
       ...detailedError.errorInfo,
-      alternativeModel,
+      alternativeModel: alternativeModel || undefined,
     }
     throw errorWithInfo
   }
@@ -898,6 +908,8 @@ export async function PUT(request: NextRequest) {
 
     const responseTime = Date.now() - startTime
     const successCount = results.filter(r => r.success).length
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const totalSentences = results.reduce((sum, r) => sum + ((r as any).sentences?.length || 0), 0)
 
     return NextResponse.json({
       success: true,
@@ -906,7 +918,7 @@ export async function PUT(request: NextRequest) {
         total: passages.length,
         success: successCount,
         failed: passages.length - successCount,
-        totalSentences: results.reduce((sum, r) => sum + (r.sentences?.length || 0), 0),
+        totalSentences,
       },
       responseTime,
       model,

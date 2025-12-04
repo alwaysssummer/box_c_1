@@ -209,7 +209,7 @@ export interface AIErrorResponse {
   solution: string
   severity?: string
   canRetry: boolean
-  alternativeModel?: string
+  alternativeModel?: string | null
 }
 
 // 문장 분리 관련 타입

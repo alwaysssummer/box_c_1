@@ -271,6 +271,8 @@ export interface Database {
           has_dependency: boolean
           difficulty: 'simple' | 'medium' | 'complex'
           recommended_model: string
+          category: 'base' | 'analysis' | 'transform' | 'question'
+          config: Json
           created_at: string
           updated_at: string
         }
@@ -287,6 +289,8 @@ export interface Database {
           has_dependency?: boolean
           difficulty?: 'simple' | 'medium' | 'complex'
           recommended_model?: string
+          category?: 'base' | 'analysis' | 'transform' | 'question'
+          config?: Json
           created_at?: string
           updated_at?: string
         }
@@ -303,6 +307,8 @@ export interface Database {
           has_dependency?: boolean
           difficulty?: 'simple' | 'medium' | 'complex'
           recommended_model?: string
+          category?: 'base' | 'analysis' | 'transform' | 'question'
+          config?: Json
           created_at?: string
           updated_at?: string
         }
@@ -360,7 +366,12 @@ export interface Database {
         Row: {
           id: string
           name: string
+          description: string | null
           instruction: string | null
+          purpose: 'learning' | 'assessment'
+          passage_transform: Json
+          output_config: Json
+          extends_from: string | null
           choice_layout: string
           choice_marker: string
           created_at: string
@@ -369,7 +380,12 @@ export interface Database {
         Insert: {
           id?: string
           name: string
+          description?: string | null
           instruction?: string | null
+          purpose?: 'learning' | 'assessment'
+          passage_transform?: Json
+          output_config?: Json
+          extends_from?: string | null
           choice_layout?: string
           choice_marker?: string
           created_at?: string
@@ -378,7 +394,12 @@ export interface Database {
         Update: {
           id?: string
           name?: string
+          description?: string | null
           instruction?: string | null
+          purpose?: 'learning' | 'assessment'
+          passage_transform?: Json
+          output_config?: Json
+          extends_from?: string | null
           choice_layout?: string
           choice_marker?: string
           created_at?: string
@@ -392,6 +413,8 @@ export interface Database {
           data_type_id: string
           role: 'body' | 'choices' | 'answer' | 'explanation'
           order_index: number
+          config: Json
+          required: boolean
         }
         Insert: {
           id?: string
@@ -399,6 +422,8 @@ export interface Database {
           data_type_id: string
           role?: 'body' | 'choices' | 'answer' | 'explanation'
           order_index?: number
+          config?: Json
+          required?: boolean
         }
         Update: {
           id?: string
@@ -406,6 +431,8 @@ export interface Database {
           data_type_id?: string
           role?: 'body' | 'choices' | 'answer' | 'explanation'
           order_index?: number
+          config?: Json
+          required?: boolean
         }
       }
       generated_data: {
@@ -561,5 +588,81 @@ export interface TreeNode {
   name: string
   type: TreeNodeType
   children?: TreeNode[]
+}
+
+// ============================================
+// 확장 타입: 출력 유형 시스템
+// ============================================
+
+// 데이터 유형 카테고리
+export type DataTypeCategory = 'base' | 'analysis' | 'transform' | 'question'
+
+// 출력 유형 목적
+export type OutputPurpose = 'learning' | 'assessment'
+
+// 지문 변형 타입
+export type PassageTransformType = 'none' | 'split' | 'extract' | 'delete' | 'insert'
+
+// 정답 형식
+export type AnswerFormat = 'single' | 'multiple' | 'combination' | 'text' | 'count' | 'order'
+
+// 지문 변형 설정 인터페이스
+export interface PassageTransformConfig {
+  type: PassageTransformType
+  split?: {
+    unit: 'sentence' | 'paragraph'
+    count: number
+    shuffleMethod: 'random' | 'reverse' | 'custom'
+  }
+  extract?: {
+    target: 'sentence' | 'phrase'
+    criteria: 'key_sentence' | 'transition' | 'conclusion'
+    positionMarkers: number
+  }
+  delete?: {
+    target: 'word' | 'phrase' | 'connector'
+    count: number
+    difficulty: 'easy' | 'medium' | 'hard'
+  }
+  insert?: {
+    type: 'binary_choice' | 'underline' | 'bracket'
+    count: number
+    targetType?: 'grammar' | 'vocabulary'
+  }
+}
+
+// 출력 설정 인터페이스
+export interface OutputConfig {
+  requiresAnswer: boolean
+  requiresExplanation: boolean
+  answerFormat: AnswerFormat
+  choiceCount?: number
+  answerType?: 'number' | 'count' | 'combination' | 'text'
+}
+
+// 데이터 유형 설정 인터페이스
+export interface DataTypeConfig {
+  cacheable?: boolean
+  reusable?: boolean
+  batchable?: boolean
+  [key: string]: unknown
+}
+
+// 출력 유형 별칭 (기존 QuestionType의 확장 개념)
+export type OutputType = QuestionType
+
+// 출력 유형 아이템 (기존 QuestionTypeItem의 확장)
+export type OutputTypeItem = QuestionTypeItem
+
+// 출력 유형 상세 (조인된 데이터)
+export interface OutputTypeWithItems extends OutputType {
+  items: (OutputTypeItem & { dataType?: DataType })[]
+  parentTemplate?: OutputType | null
+}
+
+// 데이터 유형 상세 (의존성 포함)
+export interface DataTypeWithDependencies extends DataType {
+  dependencies: DataType[]
+  dependsOn: string[]
 }
 

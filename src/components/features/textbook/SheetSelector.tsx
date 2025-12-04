@@ -497,8 +497,7 @@ export function SheetSelector({ groupName, textbooks = [], onRegister, onUpdate 
 
                                 <Checkbox
                                   checked={sheetSelected.includes(passage.number)}
-                                  onCheckedChange={(e) => {
-                                    e.stopPropagation?.()
+                                  onCheckedChange={() => {
                                     handleTogglePassage(sheet.sheetName, passage.number)
                                   }}
                                   onClick={(e) => e.stopPropagation()}

@@ -61,10 +61,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const supabase = await createClient()
     const body = await request.json()
     
-    // 문제 유형 업데이트
+    // 문제 유형(출력 유형) 업데이트
     const updateData: Record<string, unknown> = {}
     if (body.name !== undefined) updateData.name = body.name
+    if (body.description !== undefined) updateData.description = body.description
     if (body.instruction !== undefined) updateData.instruction = body.instruction
+    if (body.purpose !== undefined) updateData.purpose = body.purpose
+    if (body.passageTransform !== undefined) updateData.passage_transform = body.passageTransform
+    if (body.outputConfig !== undefined) updateData.output_config = body.outputConfig
+    if (body.extendsFrom !== undefined) updateData.extends_from = body.extendsFrom
     if (body.choiceLayout !== undefined) updateData.choice_layout = body.choiceLayout
     if (body.choiceMarker !== undefined) updateData.choice_marker = body.choiceMarker
     
@@ -87,14 +92,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       
       // 새 항목 추가
       if (body.dataTypeList.length > 0) {
-        const items = body.dataTypeList.map((item: { dataTypeId: string; role: string }, idx: number) => ({
+        const items = body.dataTypeList.map((item: { dataTypeId: string; role: string; config?: object; required?: boolean }, idx: number) => ({
           question_type_id: id,
           data_type_id: item.dataTypeId,
           role: item.role || 'body',
-          order_index: idx
+          order_index: idx,
+          config: item.config || {},
+          required: item.required !== false
         }))
         
-        await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
           .from('question_type_items')
           .insert(items)
       }

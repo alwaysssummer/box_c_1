@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
     }
     
     // 데이터 유형 생성
-    const { data: dataType, error: dataTypeError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: dataType, error: dataTypeError } = await (supabase as any)
       .from('data_types')
       .insert({
         name: body.name.trim(),
@@ -63,6 +64,8 @@ export async function POST(request: NextRequest) {
         has_dependency: body.hasDependency || false,
         difficulty: body.difficulty || 'medium',
         recommended_model: body.recommendedModel || 'gpt-4o-mini',
+        category: body.category || 'analysis',
+        config: body.config || {},
       })
       .select()
       .single()

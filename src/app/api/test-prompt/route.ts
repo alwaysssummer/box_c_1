@@ -147,10 +147,12 @@ async function callGemini(
 // POST /api/test-prompt - 프롬프트 테스트
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
+  let model: string = ''
   
   try {
     const body: TestPromptRequest = await request.json()
-    const { model, systemPrompt, userPrompt, sampleInput, outputSchema } = body
+    const { systemPrompt, userPrompt, sampleInput, outputSchema } = body
+    model = body.model
 
     if (!model || !userPrompt || !sampleInput) {
       return NextResponse.json(
@@ -159,7 +161,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const modelInfo = AI_MODELS[model]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modelInfo = (AI_MODELS as any)[model] as { provider: string; name: string; description: string } | undefined
     if (!modelInfo) {
       return NextResponse.json(
         { success: false, error: `지원하지 않는 모델입니다: ${model}` },
@@ -224,9 +227,10 @@ export async function POST(request: NextRequest) {
     const responseTime = Date.now() - startTime
     
     // 상세 에러 분류
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const detailedError = createDetailedError(error, {
       model,
-      provider: AI_MODELS[model]?.provider,
+      provider: (AI_MODELS as any)[model]?.provider,
       action: 'prompt-test'
     })
     
@@ -240,6 +244,8 @@ export async function POST(request: NextRequest) {
       model,
     })
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modelName = (AI_MODELS as any)[model]?.name || ''
     return NextResponse.json({
       success: false,
       error: `${detailedError.errorInfo.icon} ${detailedError.errorInfo.message}`,
@@ -252,7 +258,7 @@ export async function POST(request: NextRequest) {
         alternativeModel,
       },
       responseTime,
-      model: AI_MODELS[model]?.name || '',
+      model: modelName,
     })
   }
 }

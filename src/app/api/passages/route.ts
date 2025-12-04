@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error
     
     // 교재 ID나 그룹 ID로 추가 필터링 (Supabase nested filter 제한으로 인해 클라이언트에서 처리)
-    let filteredData = data || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let filteredData: any[] = data || []
     
     if (textbookId) {
       filteredData = filteredData.filter(
@@ -87,6 +88,8 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+
 
 
 

@@ -55,12 +55,23 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // 문제 유형 생성
-    const { data: questionType, error: qtError } = await supabase
+    // 문제 유형(출력 유형) 생성
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: questionType, error: qtError } = await (supabase as any)
       .from('question_types')
       .insert({
         name: body.name.trim(),
+        description: body.description || null,
         instruction: body.instruction || null,
+        purpose: body.purpose || 'assessment',
+        passage_transform: body.passageTransform || {},
+        output_config: body.outputConfig || {
+          requiresAnswer: true,
+          requiresExplanation: true,
+          answerFormat: 'single',
+          choiceCount: 5
+        },
+        extends_from: body.extendsFrom || null,
         choice_layout: body.choiceLayout || 'vertical',
         choice_marker: body.choiceMarker || 'circle'
       })
@@ -71,14 +82,17 @@ export async function POST(request: NextRequest) {
     
     // 데이터 유형 항목 생성
     if (body.dataTypeList && body.dataTypeList.length > 0) {
-      const items = body.dataTypeList.map((item: { dataTypeId: string; role: string }, idx: number) => ({
+      const items = body.dataTypeList.map((item: { dataTypeId: string; role: string; config?: object; required?: boolean }, idx: number) => ({
         question_type_id: questionType.id,
         data_type_id: item.dataTypeId,
         role: item.role || 'body',
-        order_index: idx
+        order_index: idx,
+        config: item.config || {},
+        required: item.required !== false
       }))
       
-      const { error: itemsError } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: itemsError } = await (supabase as any)
         .from('question_type_items')
         .insert(items)
       

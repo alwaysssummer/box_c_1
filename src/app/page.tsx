@@ -11,7 +11,7 @@ import { DataGenerator, DataGeneratePanel } from '@/components/features/data-gen
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
 import { QuestionTypeList, QuestionTypeForm, type QuestionTypeItem } from '@/components/features/question-type'
-import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
+import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, TextbookWithUnits, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { FolderTree, Settings, Users, Sparkles, Database } from 'lucide-react'
@@ -25,7 +25,8 @@ export default function AdminPage() {
   const [contentMode, setContentMode] = useState<ContentMode>('문장분리')
   
   // 교재관리 상태
-  const [groups, setGroups] = useState<GroupWithTextbooks[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [groups, setGroups] = useState<any[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState<GroupWithTextbooks | null>(null)
   const [selectedTextbook, setSelectedTextbook] = useState<(TreeNode & { parentGroupId?: string; parentGroupName?: string }) | null>(null)
@@ -68,13 +69,14 @@ export default function AdminPage() {
       
       if (Array.isArray(data) && data.length > 0) {
         const groupsWithTextbooks = await Promise.all(
-          data.map(async (group: { id: string; name: string }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data.map(async (group: any) => {
             const textbooksRes = await fetch(`/api/textbooks?groupId=${group.id}`)
             const textbooks = textbooksRes.ok ? await textbooksRes.json() : []
             return { ...group, textbooks }
           })
         )
-        setGroups(groupsWithTextbooks)
+        setGroups(groupsWithTextbooks as GroupWithTextbooks[])
       }
       // Supabase 미연결 시 groups는 빈 배열 유지 (로컬에서 추가 가능)
     } catch (error) {
@@ -272,7 +274,13 @@ export default function AdminPage() {
   const handleCreateGroup = async (name: string) => {
     console.log('handleCreateGroup called:', name)
     // Supabase 미연결 시에도 로컬 상태로 바로 처리
-    const tempGroup = { id: `temp-${Date.now()}`, name, textbooks: [] }
+    const tempGroup: GroupWithTextbooks = { 
+      id: `temp-${Date.now()}`, 
+      name, 
+      textbooks: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
     console.log('Creating temp group:', tempGroup)
     setGroups((prev) => {
       console.log('Previous groups:', prev)
@@ -755,13 +763,13 @@ export default function AdminPage() {
         {activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup && (
           <SheetSelector 
             groupName={selectedGroup.name} 
-            textbooks={selectedGroup.textbooks?.map(t => ({
+            textbooks={selectedGroup.textbooks?.map((t: TextbookWithUnits) => ({
               id: t.id,
               name: t.name,
-              units: t.children?.map(u => ({
+              units: t.units?.map(u => ({
                 id: u.id,
                 name: u.name,
-                passages: u.children?.map(p => ({
+                passages: u.passages?.map(p => ({
                   id: p.id,
                   name: p.name,
                 }))

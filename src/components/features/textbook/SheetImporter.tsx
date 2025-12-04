@@ -278,6 +278,7 @@ export function SheetImporter({ groupName, onRegister }: SheetImporterProps) {
             passageNumber: passage.number,
             sheetName,
             error: result.reason?.message || '처리 실패',
+            isLoading: false,
           }
         }
         completedCount++
