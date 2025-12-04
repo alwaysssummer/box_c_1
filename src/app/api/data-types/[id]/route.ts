@@ -71,7 +71,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     
     const { data, error } = await supabase
       .from('data_types')
-      .update(updateData)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update(updateData as any)
       .eq('id', id)
       .select()
       .single()
