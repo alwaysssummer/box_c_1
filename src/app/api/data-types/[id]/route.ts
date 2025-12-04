@@ -31,9 +31,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       )
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const responseData = data as Record<string, any>
     return NextResponse.json({
-      ...data,
-      dependsOn: data.data_type_dependencies?.map((d: { depends_on_id: string }) => d.depends_on_id) || []
+      ...responseData,
+      dependsOn: responseData.data_type_dependencies?.map((d: { depends_on_id: string }) => d.depends_on_id) || []
     })
   } catch (error) {
     console.error('Error fetching data type:', error)
@@ -97,8 +99,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const responseData = data as Record<string, any>
     return NextResponse.json({
-      ...data,
+      ...responseData,
       dependsOn: body.dependsOn || []
     })
   } catch (error) {
