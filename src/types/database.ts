@@ -176,6 +176,8 @@ export interface Database {
           preferred_model: string
           status: 'draft' | 'testing' | 'confirmed'
           last_tested_at: string | null
+          is_question_type: boolean  // 문제 유형으로 사용 여부
+          question_group: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'  // 문제 유형 그룹
           created_at: string
           updated_at: string
         }
@@ -194,6 +196,8 @@ export interface Database {
           preferred_model?: string
           status?: 'draft' | 'testing' | 'confirmed'
           last_tested_at?: string | null
+          is_question_type?: boolean
+          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
           created_at?: string
           updated_at?: string
         }
@@ -212,6 +216,8 @@ export interface Database {
           preferred_model?: string
           status?: 'draft' | 'testing' | 'confirmed'
           last_tested_at?: string | null
+          is_question_type?: boolean
+          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
           created_at?: string
           updated_at?: string
         }
@@ -273,6 +279,7 @@ export interface Database {
           recommended_model: string
           category: 'base' | 'analysis' | 'transform' | 'question'
           config: Json
+          output_slots: string[]  // 출제 2단계: 이 데이터 유형이 생성하는 슬롯명 목록
           created_at: string
           updated_at: string
         }
@@ -291,6 +298,7 @@ export interface Database {
           recommended_model?: string
           category?: 'base' | 'analysis' | 'transform' | 'question'
           config?: Json
+          output_slots?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -309,6 +317,7 @@ export interface Database {
           recommended_model?: string
           category?: 'base' | 'analysis' | 'transform' | 'question'
           config?: Json
+          output_slots?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -374,6 +383,9 @@ export interface Database {
           extends_from: string | null
           choice_layout: string
           choice_marker: string
+          required_slots: string[]  // 출제 2단계: 이 문제 유형이 필요로 하는 슬롯명 목록
+          question_group: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'  // 출제 2단계: 문제 유형 그룹
+          prompt_id: string | null  // 프롬프트 직접 연결 (NULL이면 슬롯 기반, 값이 있으면 프롬프트 직접 생성)
           created_at: string
           updated_at: string
         }
@@ -388,6 +400,9 @@ export interface Database {
           extends_from?: string | null
           choice_layout?: string
           choice_marker?: string
+          required_slots?: string[]
+          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
+          prompt_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -402,6 +417,9 @@ export interface Database {
           extends_from?: string | null
           choice_layout?: string
           choice_marker?: string
+          required_slots?: string[]
+          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
+          prompt_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -442,6 +460,7 @@ export interface Database {
           sentence_id: string | null
           data_type_id: string
           result: Json | null
+          slot_data: Json | null  // 출제 2단계: 슬롯명별 파싱된 데이터
           status: 'pending' | 'processing' | 'completed' | 'failed'
           error_message: string | null
           model_used: string | null
@@ -458,6 +477,7 @@ export interface Database {
           sentence_id?: string | null
           data_type_id: string
           result?: Json | null
+          slot_data?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
           model_used?: string | null
@@ -474,6 +494,7 @@ export interface Database {
           sentence_id?: string | null
           data_type_id?: string
           result?: Json | null
+          slot_data?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
           model_used?: string | null

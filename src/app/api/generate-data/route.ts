@@ -4,6 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@/lib/supabase/server'
 import { createDetailedError, getAlternativeModel } from '@/lib/ai-errors'
+import { isBaseDataType } from '@/lib/constants/base-data-types'
+import { fetchBaseData } from '@/lib/utils/base-data-fetcher'
 
 // AI 모델 정의 (test-prompt와 동일)
 export const AI_MODELS = {
@@ -28,6 +30,7 @@ interface GenerateDataRequest {
   sentenceId?: string | null // 문장 ID (문장 단위 생성 시)
   dataTypeId: string         // 데이터 유형 ID
   model?: ModelId            // AI 모델 (미지정 시 데이터 유형의 추천 모델 사용)
+  skipSave?: boolean         // true면 DB 저장 없이 결과만 반환 (미리보기 모드)
 }
 
 interface GenerateDataResponse {
@@ -177,7 +180,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body: GenerateDataRequest = await request.json()
-    const { passageId, sentenceId, dataTypeId, model: requestedModel } = body
+    const { passageId, sentenceId, dataTypeId, model: requestedModel, skipSave } = body
 
     // 필수 필드 검증
     if (!passageId || !dataTypeId) {
@@ -210,7 +213,124 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. 프롬프트 확인
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dtAnyCategory = dataType as any
+
+    // ============================================
+    // 2. 기본 데이터 유형 처리 (AI 호출 스킵)
+    // ============================================
+    if (dtAnyCategory.category === 'base' || isBaseDataType(dataTypeId)) {
+      const baseResult = await fetchBaseData(passageId, dataTypeId)
+      const responseTime = Date.now() - startTime
+
+      if (!baseResult.success) {
+        return NextResponse.json<GenerateDataResponse>(
+          { success: false, error: baseResult.error || '기본 데이터 조회 실패' },
+          { status: 500 }
+        )
+      }
+
+      // skipSave가 true면 DB 저장 없이 결과만 반환 (미리보기 모드)
+      if (skipSave) {
+        return NextResponse.json<GenerateDataResponse>({
+          success: true,
+          data: {
+            id: '', // 아직 저장 안 됨
+            passageId,
+            sentenceId: sentenceId || null,
+            dataTypeId,
+            result: baseResult.data,
+            status: 'preview', // 미리보기 상태
+            modelUsed: 'none',
+            confidence: 1.0,
+            responseTime,
+            inputTokens: 0,
+            outputTokens: 0,
+          },
+        })
+      }
+
+      // DB에 저장 (기존 데이터 확인 후 INSERT 또는 UPDATE)
+      // 기존 데이터 확인
+      let existingQuery = supabase
+        .from('generated_data')
+        .select('id')
+        .eq('passage_id', passageId)
+        .eq('data_type_id', dataTypeId)
+      
+      if (sentenceId) {
+        existingQuery = existingQuery.eq('sentence_id', sentenceId)
+      } else {
+        existingQuery = existingQuery.is('sentence_id', null)
+      }
+      
+      const { data: existingData } = await existingQuery.single()
+      
+      let savedData: { id: string } | null = null
+      let saveError: Error | null = null
+      
+      const dataToSave = {
+        passage_id: passageId,
+        sentence_id: sentenceId || null,
+        data_type_id: dataTypeId,
+        result: baseResult.data,
+        status: 'completed',
+        model_used: 'none',
+        confidence: 1.0,
+        response_time: responseTime,
+        input_tokens: 0,
+        output_tokens: 0,
+        error_message: null,
+      }
+      
+      if (existingData?.id) {
+        // UPDATE
+        const { data, error } = await supabase
+          .from('generated_data')
+          .update(dataToSave)
+          .eq('id', existingData.id)
+          .select('id')
+          .single()
+        savedData = data
+        saveError = error
+      } else {
+        // INSERT
+        const { data, error } = await supabase
+          .from('generated_data')
+          .insert(dataToSave)
+          .select('id')
+          .single()
+        savedData = data
+        saveError = error
+      }
+
+      if (saveError) {
+        console.error('Error saving base data:', saveError)
+      }
+
+      return NextResponse.json<GenerateDataResponse>({
+        success: true,
+        data: {
+          id: savedData?.id || '',
+          passageId,
+          sentenceId: sentenceId || null,
+          dataTypeId,
+          result: baseResult.data,
+          status: 'completed',
+          modelUsed: 'none',
+          confidence: 1.0,
+          responseTime,
+          inputTokens: 0,
+          outputTokens: 0,
+        },
+      })
+    }
+
+    // ============================================
+    // 3. AI 데이터 유형 처리 (기존 로직)
+    // ============================================
+
+    // 프롬프트 확인
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const promptContent = (dataType as any).prompt?.content || (dataType as any).prompt
     if (!promptContent) {
@@ -220,7 +340,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3. 지문 조회
+    // 4. 지문 조회
     const { data: passage, error: passageError } = await supabase
       .from('passages')
       .select('id, content, korean_translation')
@@ -234,7 +354,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 4. 문장 조회 (문장 단위 생성 시)
+    // 5. 문장 조회 (문장 단위 생성 시)
     let sentence = null
     if (sentenceId) {
       const { data: sentenceData, error: sentenceError } = await supabase
@@ -252,10 +372,8 @@ export async function POST(request: NextRequest) {
       sentence = sentenceData
     }
 
-    // 5. 모델 결정
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const dtAny = dataType as any
-    const model = (requestedModel || dtAny.recommended_model || 'gpt-4o-mini') as ModelId
+    // 6. 모델 결정
+    const model = (requestedModel || dtAnyCategory.recommended_model || 'gpt-4o-mini') as ModelId
     const modelInfo = AI_MODELS[model] as { provider: string; name: string; description: string } | undefined
     
     if (!modelInfo) {
@@ -265,17 +383,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 6. 프롬프트 처리
+    // 7. 프롬프트 처리
     const processedPrompt = replaceVariables(promptContent, passage, sentence || undefined)
     
     // 시스템 프롬프트 구성
     let systemPrompt = '당신은 영어 교육 전문가입니다. 반드시 JSON 형식으로만 응답하세요.'
-    const outputSchema = dtAny.prompt?.output_schema || dtAny.output_schema
+    const outputSchema = dtAnyCategory.prompt?.output_schema || dtAnyCategory.output_schema
     if (outputSchema) {
       systemPrompt += `\n\n다음 JSON 스키마를 엄격히 따르세요:\n${typeof outputSchema === 'string' ? outputSchema : JSON.stringify(outputSchema, null, 2)}`
     }
 
-    // 7. AI 호출
+    // 8. AI 호출
     let aiResult: { result: string; usage: { inputTokens: number; outputTokens: number } }
 
     switch (modelInfo.provider) {
@@ -306,7 +424,7 @@ export async function POST(request: NextRequest) {
 
     const responseTime = Date.now() - startTime
 
-    // 8. JSON 파싱
+    // 9. JSON 파싱
     let parsedResult: unknown
     try {
       parsedResult = JSON.parse(aiResult.result)
@@ -315,38 +433,88 @@ export async function POST(request: NextRequest) {
       parsedResult = { raw_text: aiResult.result }
     }
 
-    // 9. DB에 저장 (UPSERT)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: savedData, error: saveError } = await (supabase as any)
-      .from('generated_data')
-      .upsert({
-        passage_id: passageId,
-        sentence_id: sentenceId || null,
-        data_type_id: dataTypeId,
-        result: parsedResult,
-        status: 'completed',
-        model_used: model,
-        confidence: 0.95, // TODO: AI 응답에서 신뢰도 추출
-        response_time: responseTime,
-        input_tokens: aiResult.usage.inputTokens,
-        output_tokens: aiResult.usage.outputTokens,
-        error_message: null,
-      }, {
-        onConflict: 'passage_id,data_type_id,sentence_id',
-        ignoreDuplicates: false,
+    // 10. skipSave가 true면 DB 저장 없이 결과만 반환 (미리보기 모드)
+    if (skipSave) {
+      return NextResponse.json<GenerateDataResponse>({
+        success: true,
+        data: {
+          id: '', // 아직 저장 안 됨
+          passageId,
+          sentenceId: sentenceId || null,
+          dataTypeId,
+          result: parsedResult,
+          status: 'preview', // 미리보기 상태
+          modelUsed: model,
+          confidence: 0.95,
+          responseTime,
+          inputTokens: aiResult.usage.inputTokens,
+          outputTokens: aiResult.usage.outputTokens,
+        },
       })
-      .select()
-      .single()
+    }
 
-    if (saveError) {
-      console.error('Error saving generated data:', saveError)
+    // DB에 저장 (기존 데이터 확인 후 INSERT 또는 UPDATE)
+    let existingQueryAI = supabase
+      .from('generated_data')
+      .select('id')
+      .eq('passage_id', passageId)
+      .eq('data_type_id', dataTypeId)
+    
+    if (sentenceId) {
+      existingQueryAI = existingQueryAI.eq('sentence_id', sentenceId)
+    } else {
+      existingQueryAI = existingQueryAI.is('sentence_id', null)
+    }
+    
+    const { data: existingDataAI } = await existingQueryAI.single()
+    
+    let savedDataAI: { id: string } | null = null
+    let saveErrorAI: Error | null = null
+    
+    const aiDataToSave = {
+      passage_id: passageId,
+      sentence_id: sentenceId || null,
+      data_type_id: dataTypeId,
+      result: parsedResult,
+      status: 'completed',
+      model_used: model,
+      confidence: 0.95,
+      response_time: responseTime,
+      input_tokens: aiResult.usage.inputTokens,
+      output_tokens: aiResult.usage.outputTokens,
+      error_message: null,
+    }
+    
+    if (existingDataAI?.id) {
+      // UPDATE
+      const { data, error } = await supabase
+        .from('generated_data')
+        .update(aiDataToSave)
+        .eq('id', existingDataAI.id)
+        .select('id')
+        .single()
+      savedDataAI = data
+      saveErrorAI = error
+    } else {
+      // INSERT
+      const { data, error } = await supabase
+        .from('generated_data')
+        .insert(aiDataToSave)
+        .select('id')
+        .single()
+      savedDataAI = data
+      saveErrorAI = error
+    }
+
+    if (saveErrorAI) {
+      console.error('Error saving generated data:', saveErrorAI)
       // 저장 실패해도 결과는 반환
     }
 
     return NextResponse.json<GenerateDataResponse>({
       success: true,
       data: {
-        id: savedData?.id || '',
+        id: savedDataAI?.id || '',
         passageId,
         sentenceId: sentenceId || null,
         dataTypeId,
@@ -385,11 +553,25 @@ export async function POST(request: NextRequest) {
 
     // 실패 상태로 DB 저장 시도
     if (body.passageId && body.dataTypeId) {
-      const supabase = await createClient()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
-        .from('generated_data')
-        .upsert({
+      try {
+        const supabase = await createClient()
+        
+        // 기존 데이터 확인
+        let existingQueryFail = supabase
+          .from('generated_data')
+          .select('id')
+          .eq('passage_id', body.passageId)
+          .eq('data_type_id', body.dataTypeId)
+        
+        if (body.sentenceId) {
+          existingQueryFail = existingQueryFail.eq('sentence_id', body.sentenceId)
+        } else {
+          existingQueryFail = existingQueryFail.is('sentence_id', null)
+        }
+        
+        const { data: existingFail } = await existingQueryFail.single()
+        
+        const failDataToSave = {
           passage_id: body.passageId,
           sentence_id: body.sentenceId || null,
           data_type_id: body.dataTypeId,
@@ -397,10 +579,21 @@ export async function POST(request: NextRequest) {
           error_message: detailedError.errorInfo.message,
           model_used: model,
           response_time: responseTime,
-        }, {
-          onConflict: 'passage_id,data_type_id,sentence_id',
-          ignoreDuplicates: false,
-        })
+        }
+        
+        if (existingFail?.id) {
+          await supabase
+            .from('generated_data')
+            .update(failDataToSave)
+            .eq('id', existingFail.id)
+        } else {
+          await supabase
+            .from('generated_data')
+            .insert(failDataToSave)
+        }
+      } catch (saveErr) {
+        console.error('Failed to save error status:', saveErr)
+      }
     }
     
     return NextResponse.json<GenerateDataResponse>({
@@ -476,5 +669,109 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ============================================
+// PUT /api/generate-data - 미리보기 결과 일괄 저장
+// ============================================
 
+interface SaveDataItem {
+  passageId: string
+  sentenceId?: string | null
+  dataTypeId: string
+  result: unknown
+  modelUsed: string
+  confidence: number
+  responseTime: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const body: { items: SaveDataItem[] } = await request.json()
+    
+    if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+      return NextResponse.json(
+        { success: false, error: '저장할 데이터가 없습니다' },
+        { status: 400 }
+      )
+    }
+    
+    const results: { passageId: string; success: boolean; error?: string }[] = []
+    
+    for (const item of body.items) {
+      try {
+        // 기존 데이터 확인
+        let existingQuery = supabase
+          .from('generated_data')
+          .select('id')
+          .eq('passage_id', item.passageId)
+          .eq('data_type_id', item.dataTypeId)
+        
+        if (item.sentenceId) {
+          existingQuery = existingQuery.eq('sentence_id', item.sentenceId)
+        } else {
+          existingQuery = existingQuery.is('sentence_id', null)
+        }
+        
+        const { data: existingData } = await existingQuery.single()
+        
+        const dataToSave = {
+          passage_id: item.passageId,
+          sentence_id: item.sentenceId || null,
+          data_type_id: item.dataTypeId,
+          result: item.result,
+          status: 'completed',
+          model_used: item.modelUsed,
+          confidence: item.confidence,
+          response_time: item.responseTime,
+          input_tokens: item.inputTokens,
+          output_tokens: item.outputTokens,
+          error_message: null,
+        }
+        
+        if (existingData?.id) {
+          // UPDATE
+          const { error } = await supabase
+            .from('generated_data')
+            .update(dataToSave)
+            .eq('id', existingData.id)
+          
+          if (error) throw error
+        } else {
+          // INSERT
+          const { error } = await supabase
+            .from('generated_data')
+            .insert(dataToSave)
+          
+          if (error) throw error
+        }
+        
+        results.push({ passageId: item.passageId, success: true })
+      } catch (err) {
+        results.push({ 
+          passageId: item.passageId, 
+          success: false, 
+          error: err instanceof Error ? err.message : '저장 실패' 
+        })
+      }
+    }
+    
+    const successCount = results.filter(r => r.success).length
+    const failCount = results.filter(r => !r.success).length
+    
+    return NextResponse.json({
+      success: failCount === 0,
+      message: `저장 완료: 성공 ${successCount}개, 실패 ${failCount}개`,
+      results,
+    })
+    
+  } catch (error) {
+    console.error('Error saving generated data batch:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to save generated data' },
+      { status: 500 }
+    )
+  }
+}
 

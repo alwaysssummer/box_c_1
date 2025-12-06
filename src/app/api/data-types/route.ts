@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         recommended_model: body.recommendedModel || 'gpt-4o-mini',
         category: body.category || 'analysis',
         config: body.config || {},
+        available_roles: body.availableRoles || [],
       })
       .select()
       .single()

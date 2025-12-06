@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS data_types (
   has_answer BOOLEAN DEFAULT FALSE,
   answer_format TEXT,
   has_dependency BOOLEAN DEFAULT FALSE,
+  available_roles TEXT[] DEFAULT '{}',  -- 문제 생성 시 사용 가능한 역할 (body, choices, answer, explanation)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

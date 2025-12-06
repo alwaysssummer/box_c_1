@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -41,6 +42,9 @@ interface PromptFormData {
   testPassageId: string | null
   preferredModel: ModelId
   status: 'draft' | 'testing' | 'confirmed'
+  // 문제 유형 자동 등록
+  isQuestionType: boolean
+  questionGroup: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
 }
 
 interface PromptFormProps {
@@ -66,6 +70,8 @@ const initialFormData: PromptFormData = {
   testPassageId: null,
   preferredModel: 'gpt-4o-mini',
   status: 'draft',
+  isQuestionType: false,
+  questionGroup: 'practical',
 }
 
 export function PromptForm({
@@ -117,6 +123,8 @@ export function PromptForm({
         testPassageId: prompt.test_passage_id,
         preferredModel: prompt.preferred_model as ModelId,
         status: prompt.status,
+        isQuestionType: (prompt as unknown as { is_question_type?: boolean }).is_question_type || false,
+        questionGroup: ((prompt as unknown as { question_group?: string }).question_group as PromptFormData['questionGroup']) || 'practical',
       })
       setSelectedModel(prompt.preferred_model as ModelId)
       setManualTestInput(prompt.sample_input || '')
@@ -428,6 +436,63 @@ export function PromptForm({
                 <label htmlFor="target-sentence" className="text-sm cursor-pointer">문장</label>
               </div>
             </RadioGroup>
+          </div>
+
+          {/* 문제 유형으로 사용 */}
+          <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Checkbox
+                id="is-question-type"
+                checked={formData.isQuestionType}
+                onCheckedChange={(checked) => 
+                  setFormData(prev => ({ ...prev, isQuestionType: checked === true }))
+                }
+                disabled={!isEditing}
+              />
+              <label htmlFor="is-question-type" className="text-sm font-medium cursor-pointer">
+                🚀 문제 유형으로 사용 (원큐 출제)
+              </label>
+            </div>
+            {formData.isQuestionType && (
+              <div className="ml-6 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  이 프롬프트가 &quot;문제출제 &gt; 문제 유형&quot;에 자동 등록됩니다.
+                </p>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">그룹:</label>
+                  <Select
+                    value={formData.questionGroup}
+                    onValueChange={(value) => setFormData(prev => ({ 
+                      ...prev, 
+                      questionGroup: value as PromptFormData['questionGroup'] 
+                    }))}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="practical">실전</SelectItem>
+                      <SelectItem value="selection">선택/수정</SelectItem>
+                      <SelectItem value="writing">서술형/영작</SelectItem>
+                      <SelectItem value="analysis">문장분석</SelectItem>
+                      <SelectItem value="vocabulary">단어장</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* 출력 형식 자동 주입 안내 */}
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                  <p className="text-green-700 font-medium mb-1">📋 출력 형식 자동 주입</p>
+                  <p className="text-green-600">
+                    AI 호출 시 선택한 그룹({formData.questionGroup === 'practical' ? '실전' : 
+                      formData.questionGroup === 'selection' ? '선택/수정' :
+                      formData.questionGroup === 'writing' ? '서술형/영작' :
+                      formData.questionGroup === 'analysis' ? '문장분석' : '단어장'})에 맞는 
+                    [[태그]] 출력 형식이 자동으로 추가됩니다.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

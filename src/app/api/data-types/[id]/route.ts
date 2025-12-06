@@ -70,6 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.recommendedModel !== undefined) updateData.recommended_model = body.recommendedModel
     if (body.category !== undefined) updateData.category = body.category
     if (body.config !== undefined) updateData.config = body.config
+    if (body.availableRoles !== undefined) updateData.available_roles = body.availableRoles
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)

@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
     // 프롬프트에서 변수 추출
     const variables = extractVariables(body.content || '')
 
-    const { data, error } = await supabase
+    // 1. 프롬프트 저장
+    const { data: prompt, error } = await supabase
       .from('prompts')
       .insert({
         name: body.name,
@@ -58,13 +59,49 @@ export async function POST(request: NextRequest) {
         test_passage_id: body.testPassageId,
         preferred_model: body.preferredModel || 'gpt-4o-mini',
         status: body.status || 'draft',
+        is_question_type: body.isQuestionType || false,
+        question_group: body.questionGroup || 'practical',
       })
       .select()
       .single()
 
     if (error) throw error
 
-    return NextResponse.json(data, { status: 201 })
+    // 2. is_question_type이 true이면 question_types에 자동 생성
+    if (body.isQuestionType && prompt) {
+      // 같은 이름의 question_type이 있는지 확인
+      const { data: existingQt } = await supabase
+        .from('question_types')
+        .select('id')
+        .eq('name', body.name)
+        .single()
+
+      if (existingQt) {
+        // 기존 것에 prompt_id 연결
+        await supabase
+          .from('question_types')
+          .update({ 
+            prompt_id: prompt.id,
+            question_group: body.questionGroup || 'practical',
+          })
+          .eq('id', existingQt.id)
+      } else {
+        // 새로 생성
+        await supabase
+          .from('question_types')
+          .insert({
+            name: body.name,
+            description: body.description,
+            instruction: '', // 프롬프트에서 생성하므로 빈값
+            prompt_id: prompt.id,
+            question_group: body.questionGroup || 'practical',
+            choice_layout: 'vertical',
+            choice_marker: 'circle',
+          })
+      }
+    }
+
+    return NextResponse.json(prompt, { status: 201 })
   } catch (error) {
     return handleApiError(error, 'Failed to create prompt')
   }

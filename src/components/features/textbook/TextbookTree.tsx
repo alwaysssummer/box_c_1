@@ -22,6 +22,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
+// 현황 배지 정보
+interface StatusInfo {
+  completed: number
+  total: number
+}
+
 interface TextbookTreeProps {
   nodes: TreeNode[]
   selectedId: string | null
@@ -33,6 +39,19 @@ interface TextbookTreeProps {
   onReorderGroups?: (groups: { id: string; order_index: number }[]) => Promise<void>
   onReorderTextbooks?: (groupId: string, textbooks: { id: string; order_index: number }[]) => Promise<void>
   onReorderUnits?: (textbookId: string, units: { id: string; order_index: number }[]) => Promise<void>
+  // 선택 모드: 'textbook' = 교재 단위 선택 (문제관리), 'passage' = 지문 단위 선택 (문제출제)
+  selectionMode?: 'textbook' | 'passage'
+  selectedTextbookIds?: string[]
+  selectedPassageIds?: string[]
+  onToggleTextbookSelection?: (textbookId: string) => void
+  onToggleGroupSelection?: (groupId: string, textbookIds: string[]) => void
+  // 지문 단위 선택용 콜백
+  onTogglePassageSelection?: (passageId: string) => void
+  onToggleUnitSelection?: (unitId: string, passageIds: string[]) => void
+  onToggleTextbookPassageSelection?: (textbookId: string, passageIds: string[]) => void
+  onToggleGroupPassageSelection?: (groupId: string, passageIds: string[]) => void
+  // 현황 배지 표시용
+  statusInfo?: Map<string, StatusInfo>
 }
 
 const NODE_ICONS: Record<TreeNodeType, React.ReactNode> = {
@@ -65,6 +84,19 @@ interface TreeNodeItemProps {
   isDragging?: boolean
   showDragHandle?: boolean
   skipChildrenRendering?: boolean // 외부에서 자식을 렌더링할 때 true
+  // 선택 모드: 'textbook' = 교재 단위 선택 (문제관리), 'passage' = 지문 단위 선택 (문제출제)
+  selectionMode?: 'textbook' | 'passage'
+  selectedTextbookIds?: string[]
+  selectedPassageIds?: string[]
+  onToggleTextbookSelection?: (textbookId: string) => void
+  onToggleGroupSelection?: (groupId: string, textbookIds: string[]) => void
+  // 지문 단위 선택용 콜백
+  onTogglePassageSelection?: (passageId: string) => void
+  onToggleUnitSelection?: (unitId: string, passageIds: string[]) => void
+  onToggleTextbookPassageSelection?: (textbookId: string, passageIds: string[]) => void
+  onToggleGroupPassageSelection?: (groupId: string, passageIds: string[]) => void
+  // 현황 배지 표시용
+  statusInfo?: Map<string, StatusInfo>
 }
 
 function TreeNodeItem({
@@ -83,6 +115,16 @@ function TreeNodeItem({
   isDragging,
   showDragHandle,
   skipChildrenRendering,
+  selectionMode,
+  selectedTextbookIds,
+  selectedPassageIds,
+  onToggleTextbookSelection,
+  onToggleGroupSelection,
+  onTogglePassageSelection,
+  onToggleUnitSelection,
+  onToggleTextbookPassageSelection,
+  onToggleGroupPassageSelection,
+  statusInfo,
 }: TreeNodeItemProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -90,6 +132,12 @@ function TreeNodeItem({
   const hasChildren = node.children && node.children.length > 0
   const isExpanded = expandedIds.has(node.id)
   const isSelected = selectedId === node.id
+  
+  // 교재가 선택되었는지 확인 (문제관리 모드 - textbook 선택)
+  const isTextbookSelected = selectionMode === 'textbook' && node.type === 'textbook' && selectedTextbookIds?.includes(node.id)
+  
+  // 지문이 선택되었는지 확인 (문제출제 모드 - passage 선택)
+  const isPassageSelected = selectionMode === 'passage' && node.type === 'passage' && selectedPassageIds?.includes(node.id)
 
   const handleClick = () => {
     if (!isEditing) {
@@ -147,22 +195,291 @@ function TreeNodeItem({
   // 드래그 가능한 타입인지
   const isDraggableType = node.type === 'group' || node.type === 'textbook' || node.type === 'unit'
 
+  // ============ 하위 지문 ID 수집 헬퍼 함수 ============
+  const collectPassageIds = (treeNode: TreeNode): string[] => {
+    if (treeNode.type === 'passage') return [treeNode.id]
+    if (!treeNode.children) return []
+    return treeNode.children.flatMap(child => collectPassageIds(child))
+  }
+
+  // ============ 교재 선택 토글 핸들러 (문제관리 모드) ============
+  const handleTextbookToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'textbook' && onToggleTextbookSelection) {
+      onToggleTextbookSelection(node.id)
+    }
+  }
+
+  // 그룹 선택 토글 핸들러 - 문제관리 모드 (하위 교재 전체 선택/해제)
+  const handleGroupToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'group' && onToggleGroupSelection && node.children) {
+      const textbookIds = node.children
+        .filter(child => child.type === 'textbook')
+        .map(child => child.id)
+      onToggleGroupSelection(node.id, textbookIds)
+    }
+  }
+
+  // ============ 지문 단위 선택 핸들러들 (문제출제 모드) ============
+  // 지문 선택 토글 핸들러
+  const handlePassageToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'passage' && onTogglePassageSelection) {
+      onTogglePassageSelection(node.id)
+    }
+  }
+
+  // 단원 선택 토글 핸들러 (하위 지문 전체 선택/해제)
+  const handleUnitPassageToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'unit' && onToggleUnitSelection) {
+      const passageIds = collectPassageIds(node)
+      onToggleUnitSelection(node.id, passageIds)
+    }
+  }
+
+  // 교재 선택 토글 핸들러 - 문제출제 모드 (하위 지문 전체 선택/해제)
+  const handleTextbookPassageToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'textbook' && onToggleTextbookPassageSelection) {
+      const passageIds = collectPassageIds(node)
+      onToggleTextbookPassageSelection(node.id, passageIds)
+    }
+  }
+
+  // 그룹 선택 토글 핸들러 - 문제출제 모드 (하위 지문 전체 선택/해제)
+  const handleGroupPassageToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (node.type === 'group' && onToggleGroupPassageSelection) {
+      const passageIds = collectPassageIds(node)
+      onToggleGroupPassageSelection(node.id, passageIds)
+    }
+  }
+
+  // ============ 문제관리 모드 - 교재 단위 선택 상태 계산 ============
+  // 그룹 내 교재 목록
+  const groupTextbooks = node.type === 'group' && node.children 
+    ? node.children.filter(c => c.type === 'textbook') 
+    : []
+
+  // 그룹 내 모든 교재가 선택되었는지 확인 (교재가 있어야만 true)
+  const isGroupFullySelected = selectionMode === 'textbook' && groupTextbooks.length > 0 && selectedTextbookIds
+    ? groupTextbooks.every(c => selectedTextbookIds.includes(c.id))
+    : false
+
+  // 그룹 내 일부 교재가 선택되었는지 확인
+  const isGroupPartiallySelected = selectionMode === 'textbook' && groupTextbooks.length > 0 && selectedTextbookIds
+    ? groupTextbooks.some(c => selectedTextbookIds.includes(c.id)) && !isGroupFullySelected
+    : false
+
+  // ============ 문제출제 모드 - 지문 단위 선택 상태 계산 ============
+  const nodePassageIds = collectPassageIds(node)
+  
+  // 노드 내 모든 지문이 선택되었는지 (지문이 있어야만 true)
+  const isNodeFullySelectedByPassage = selectionMode === 'passage' && nodePassageIds.length > 0 && selectedPassageIds
+    ? nodePassageIds.every(id => selectedPassageIds.includes(id))
+    : false
+  
+  // 노드 내 일부 지문이 선택되었는지
+  const isNodePartiallySelectedByPassage = selectionMode === 'passage' && nodePassageIds.length > 0 && selectedPassageIds
+    ? nodePassageIds.some(id => selectedPassageIds.includes(id)) && !isNodeFullySelectedByPassage
+    : false
+
+  // 클릭 핸들러 결정
+  const getClickHandler = () => {
+    if (!selectionMode) return handleClick
+    
+    if (selectionMode === 'textbook') {
+      // 문제관리 모드: 교재 단위 선택
+      if (node.type === 'textbook') return handleTextbookToggle
+      if (node.type === 'group') return handleGroupToggle
+      return handleClick
+    } else if (selectionMode === 'passage') {
+      // 문제출제 모드: 지문 단위 선택
+      if (node.type === 'passage') return handlePassageToggle
+      if (node.type === 'unit') return handleUnitPassageToggle
+      if (node.type === 'textbook') return handleTextbookPassageToggle
+      if (node.type === 'group') return handleGroupPassageToggle
+      return handleClick
+    }
+    return handleClick
+  }
+
+  // 하이라이트 스타일 결정
+  const getHighlightClass = () => {
+    if (isSelected) return 'bg-primary/10 text-primary'
+    
+    if (selectionMode === 'textbook') {
+      if (isTextbookSelected) return 'bg-violet-100 text-violet-800 ring-1 ring-violet-300'
+      if (isGroupFullySelected || isGroupPartiallySelected) return 'bg-blue-50 text-blue-800'
+    } else if (selectionMode === 'passage') {
+      if (isPassageSelected) return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300'
+      if (isNodeFullySelectedByPassage) return 'bg-emerald-50 text-emerald-700'
+      if (isNodePartiallySelectedByPassage) return 'bg-amber-50 text-amber-700'
+    }
+    
+    return 'hover:bg-muted'
+  }
+
   return (
     <div style={{ opacity: isDragging ? 0.5 : 1 }}>
       <div
-        onClick={handleClick}
+        onClick={getClickHandler()}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
           'flex items-center py-1.5 px-2 rounded cursor-pointer transition-colors group',
-          isSelected
-            ? 'bg-primary/10 text-primary'
-            : 'hover:bg-muted'
+          getHighlightClass()
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        {/* 드래그 핸들 (그룹, 교재, 단원) */}
-        {shouldShowDragHandle ? (
+        {/* ============ 문제관리 모드 - 교재 단위 체크박스 ============ */}
+        {/* 그룹 체크박스 */}
+        {selectionMode === 'textbook' && node.type === 'group' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handleGroupToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isGroupFullySelected
+                ? 'bg-blue-600 border-blue-600'
+                : isGroupPartiallySelected
+                  ? 'bg-blue-300 border-blue-400'
+                  : 'border-gray-300 hover:border-blue-400'
+            )}>
+              {isGroupFullySelected && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {isGroupPartiallySelected && (
+                <div className="w-1.5 h-1.5 bg-blue-600 rounded-sm" />
+              )}
+            </div>
+          </div>
+        )}
+        {/* 교재 체크박스 */}
+        {selectionMode === 'textbook' && node.type === 'textbook' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handleTextbookToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isTextbookSelected
+                ? 'bg-violet-600 border-violet-600'
+                : 'border-gray-300 hover:border-violet-400'
+            )}>
+              {isTextbookSelected && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============ 문제출제 모드 - 지문 단위 체크박스 ============ */}
+        {/* 그룹 체크박스 (지문 모드) */}
+        {selectionMode === 'passage' && node.type === 'group' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handleGroupPassageToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isNodeFullySelectedByPassage
+                ? 'bg-emerald-600 border-emerald-600'
+                : isNodePartiallySelectedByPassage
+                  ? 'bg-amber-400 border-amber-500'
+                  : 'border-gray-300 hover:border-emerald-400'
+            )}>
+              {isNodeFullySelectedByPassage && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {isNodePartiallySelectedByPassage && (
+                <div className="w-1.5 h-1.5 bg-amber-600 rounded-sm" />
+              )}
+            </div>
+          </div>
+        )}
+        {/* 교재 체크박스 (지문 모드) */}
+        {selectionMode === 'passage' && node.type === 'textbook' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handleTextbookPassageToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isNodeFullySelectedByPassage
+                ? 'bg-emerald-600 border-emerald-600'
+                : isNodePartiallySelectedByPassage
+                  ? 'bg-amber-400 border-amber-500'
+                  : 'border-gray-300 hover:border-emerald-400'
+            )}>
+              {isNodeFullySelectedByPassage && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {isNodePartiallySelectedByPassage && (
+                <div className="w-1.5 h-1.5 bg-amber-600 rounded-sm" />
+              )}
+            </div>
+          </div>
+        )}
+        {/* 단원 체크박스 (지문 모드) */}
+        {selectionMode === 'passage' && node.type === 'unit' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handleUnitPassageToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isNodeFullySelectedByPassage
+                ? 'bg-emerald-600 border-emerald-600'
+                : isNodePartiallySelectedByPassage
+                  ? 'bg-amber-400 border-amber-500'
+                  : 'border-gray-300 hover:border-emerald-400'
+            )}>
+              {isNodeFullySelectedByPassage && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {isNodePartiallySelectedByPassage && (
+                <div className="w-1.5 h-1.5 bg-amber-600 rounded-sm" />
+              )}
+            </div>
+          </div>
+        )}
+        {/* 지문 체크박스 (지문 모드) */}
+        {selectionMode === 'passage' && node.type === 'passage' && (
+          <div 
+            className="w-4 h-4 mr-2 flex items-center justify-center"
+            onClick={handlePassageToggle}
+          >
+            <div className={cn(
+              'w-3.5 h-3.5 rounded border-2 flex items-center justify-center transition-colors',
+              isPassageSelected
+                ? 'bg-emerald-600 border-emerald-600'
+                : 'border-gray-300 hover:border-emerald-400'
+            )}>
+              {isPassageSelected && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {/* 드래그 핸들 (그룹, 교재, 단원) - 선택 모드가 아닐 때만 */}
+        {!selectionMode && shouldShowDragHandle ? (
           <button
             {...dragHandleProps}
             className="w-4 h-4 mr-1 flex items-center justify-center text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
@@ -170,7 +487,7 @@ function TreeNodeItem({
           >
             <GripVertical className="w-3 h-3" />
           </button>
-        ) : (
+        ) : !selectionMode && (
           // 드래그 핸들이 없는 경우 공간 유지 (드래그 가능한 타입만)
           isDraggableType && <span className="w-4 h-4 mr-1" />
         )}
@@ -217,6 +534,20 @@ function TreeNodeItem({
           </span>
         )}
 
+        {/* 현황 배지 (그룹/교재) */}
+        {!isEditing && statusInfo && (node.type === 'group' || node.type === 'textbook') && statusInfo.has(node.id) && (
+          <span className={cn(
+            "text-xs ml-2 px-1.5 py-0.5 rounded-full font-medium",
+            statusInfo.get(node.id)!.completed === statusInfo.get(node.id)!.total
+              ? "bg-green-100 text-green-700"
+              : statusInfo.get(node.id)!.completed > 0
+                ? "bg-yellow-100 text-yellow-700"
+                : "bg-gray-100 text-gray-600"
+          )}>
+            ✅ {statusInfo.get(node.id)!.completed}/{statusInfo.get(node.id)!.total}
+          </span>
+        )}
+
         {/* 수정/삭제 버튼 */}
         {isHovered && !isEditing && (
           <div className="flex items-center gap-1 ml-2">
@@ -259,6 +590,16 @@ function TreeNodeItem({
               parentGroup={nextParentGroup}
               parentTextbook={nextParentTextbook}
               parentUnit={nextParentUnit}
+              selectionMode={selectionMode}
+              selectedTextbookIds={selectedTextbookIds}
+              selectedPassageIds={selectedPassageIds}
+              onToggleTextbookSelection={onToggleTextbookSelection}
+              onToggleGroupSelection={onToggleGroupSelection}
+              onTogglePassageSelection={onTogglePassageSelection}
+              onToggleUnitSelection={onToggleUnitSelection}
+              onToggleTextbookPassageSelection={onToggleTextbookPassageSelection}
+              onToggleGroupPassageSelection={onToggleGroupPassageSelection}
+              statusInfo={statusInfo}
             />
           ))}
         </div>
@@ -565,6 +906,16 @@ export function TextbookTree({
   onReorderGroups,
   onReorderTextbooks,
   onReorderUnits,
+  selectionMode,
+  selectedTextbookIds,
+  selectedPassageIds,
+  onToggleTextbookSelection,
+  onToggleGroupSelection,
+  onTogglePassageSelection,
+  onToggleUnitSelection,
+  onToggleTextbookPassageSelection,
+  onToggleGroupPassageSelection,
+  statusInfo,
 }: TextbookTreeProps) {
   const [internalExpandedIds, setInternalExpandedIds] = useState<Set<string>>(new Set())
 
@@ -619,7 +970,38 @@ export function TextbookTree({
     return null
   }
 
-  // 드래그 앤 드롭 활성화 (그룹, 교재, 단원)
+  // 선택 모드 또는 현황 배지 표시 모드에서는 드래그 앤 드롭 없이 간단한 렌더링 (우선 처리)
+  if (selectionMode || statusInfo) {
+    return (
+      <div className="py-1">
+        {nodes.map((node) => (
+          <TreeNodeItem
+            key={node.id}
+            node={node}
+            depth={0}
+            selectedId={selectedId}
+            expandedIds={expandedIds}
+            onSelect={onSelect}
+            onToggleExpand={handleToggleExpand}
+            onDelete={onDelete}
+            onRename={onRename}
+            selectionMode={selectionMode}
+            selectedTextbookIds={selectedTextbookIds}
+            selectedPassageIds={selectedPassageIds}
+            onToggleTextbookSelection={onToggleTextbookSelection}
+            onToggleGroupSelection={onToggleGroupSelection}
+            onTogglePassageSelection={onTogglePassageSelection}
+            onToggleUnitSelection={onToggleUnitSelection}
+            onToggleTextbookPassageSelection={onToggleTextbookPassageSelection}
+            onToggleGroupPassageSelection={onToggleGroupPassageSelection}
+            statusInfo={statusInfo}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  // 드래그 앤 드롭 활성화 (그룹, 교재, 단원) - 문장분리 모드
   if (onReorderGroups || onReorderTextbooks || onReorderUnits) {
     return (
       <div className="py-1">
@@ -653,6 +1035,7 @@ export function TextbookTree({
     )
   }
 
+  // 기본 렌더링
   return (
     <div className="py-1">
       {nodes.map((node) => (
@@ -666,6 +1049,7 @@ export function TextbookTree({
           onToggleExpand={handleToggleExpand}
           onDelete={onDelete}
           onRename={onRename}
+          statusInfo={statusInfo}
         />
       ))}
     </div>

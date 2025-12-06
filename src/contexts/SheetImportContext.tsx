@@ -99,17 +99,12 @@ interface SheetImportContextType {
   // 헬퍼
   getPassageByKey: (key: string) => { sheetName: string; passage: SheetPassage } | null
   
-  // 업데이트 모드 (덮어쓰기 시 localStorage 복구 안함)
+  // 업데이트 모드 (기존 데이터 덮어쓰기)
   isUpdateMode: boolean
   setIsUpdateMode: (isUpdate: boolean) => void
 }
 
 const SheetImportContext = createContext<SheetImportContextType | null>(null)
-
-// ============================================
-// localStorage 키
-// ============================================
-const getStorageKey = (sheetId: string) => `split-results-${sheetId}`
 
 // ============================================
 // Provider
@@ -152,7 +147,7 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
   // 선택된 지문 (우측 패널용)
   const [selectedPassageKey, setSelectedPassageKey] = useState<string | null>(null)
   
-  // 업데이트 모드 (덮어쓰기 시 localStorage 복구 안함)
+  // 업데이트 모드 (기존 데이터 덮어쓰기)
   const [isUpdateMode, setIsUpdateMode] = useState(false)
 
   // ============================================
@@ -170,37 +165,9 @@ export function SheetImportProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isSplitting])
 
-  // ============================================
-  // 💾 localStorage 저장/복구
-  // ============================================
-  
-  // 분리 결과가 변경되면 localStorage에 저장
-  useEffect(() => {
-    if (sheetInfo && Object.keys(splitResults).length > 0) {
-      const key = getStorageKey(sheetInfo.sheetId)
-      localStorage.setItem(key, JSON.stringify(splitResults))
-    }
-  }, [splitResults, sheetInfo])
-
-  // 시트 로드 시 localStorage에서 복구 (업데이트 모드 제외)
-  useEffect(() => {
-    if (sheetInfo && !isUpdateMode) {
-      const key = getStorageKey(sheetInfo.sheetId)
-      const saved = localStorage.getItem(key)
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved)
-          const restoredCount = Object.keys(parsed).length
-          if (restoredCount > 0) {
-            setSplitResults(parsed)
-            toast.success(`✅ 이전 분리 결과 복구됨 (${restoredCount}개 지문)`)
-          }
-        } catch {
-          // 파싱 실패 시 무시
-        }
-      }
-    }
-  }, [sheetInfo, isUpdateMode])
+  // NOTE: localStorage 분리 결과 저장/복구 기능 비활성화
+  // - 세션 간 데이터 불일치로 인한 혼란 방지
+  // - 분리 결과는 현재 세션에서만 유지됨
 
   // ============================================
   // 시트 조회

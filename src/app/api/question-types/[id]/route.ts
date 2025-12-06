@@ -72,6 +72,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.extendsFrom !== undefined) updateData.extends_from = body.extendsFrom
     if (body.choiceLayout !== undefined) updateData.choice_layout = body.choiceLayout
     if (body.choiceMarker !== undefined) updateData.choice_marker = body.choiceMarker
+    // 출제 방식 관련 필드
+    if (body.promptId !== undefined) updateData.prompt_id = body.promptId
+    if (body.group !== undefined) updateData.question_group = body.group
     
     const { data, error } = await supabase
       .from('question_types')

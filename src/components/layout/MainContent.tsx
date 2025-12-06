@@ -3,8 +3,8 @@
 import { ActiveTab, SettingMenu } from '@/types'
 import { cn } from '@/lib/utils'
 
-// 교재관리 서브 모드
-export type ContentMode = '문장분리' | '데이터 생성' | '문제 생성'
+// 교재관리 서브 모드 (출제2단계 시스템으로 일원화됨)
+export type ContentMode = '현황' | '문장분리' | '문제출제' | '문제관리'
 
 interface MainContentProps {
   activeTab: ActiveTab
@@ -29,7 +29,7 @@ export function MainContent({
     return activeTab
   }
 
-  const contentModes: ContentMode[] = ['문장분리', '데이터 생성', '문제 생성']
+  const contentModes: ContentMode[] = ['현황', '문장분리', '문제출제', '문제관리']
 
   return (
     <div className="flex-1 flex flex-col min-w-0">

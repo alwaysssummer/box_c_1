@@ -14,6 +14,69 @@ import { ANSWER_FORMATS, PROMPT_STATUS, AI_MODELS, DIFFICULTY_OPTIONS, DIFFICULT
 import type { Prompt } from '@/types/database'
 import type { DataTypeItem } from './DataTypeList'
 
+// 슬롯 역할 타입 - 레이아웃 템플릿 슬롯과 일치
+type SlotRole = 
+  | 'instruction'   // 지시문
+  | 'body'          // 본문
+  | 'choices'       // 선택지
+  | 'given'         // 주어진 글 (박스)
+  | 'original'      // 원문 (문장분석/서술형)
+  | 'translation'   // 해석
+  | 'vocabulary'    // 어휘
+  | 'grammar'       // 문법포인트
+  | 'hints'         // 힌트
+  | 'sentence'      // 문장(괄호)
+  | 'words'         // 단어목록
+  | 'answer'        // 정답
+  | 'explanation'   // 해설
+
+// 그룹 타입
+type QuestionGroup = 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
+
+// 역할별 그룹 매핑
+const SLOT_ROLES: { 
+  value: SlotRole
+  label: string
+  description: string
+  icon: string
+  applicableGroups: QuestionGroup[]
+}[] = [
+  // 공통 역할
+  { value: 'instruction', label: '지시문', description: '문제 안내문', icon: '📋', applicableGroups: ['practical', 'selection', 'writing'] },
+  { value: 'body', label: '본문', description: '지문/본문', icon: '📄', applicableGroups: ['practical', 'selection'] },
+  { value: 'answer', label: '정답', description: '정답 데이터', icon: '✅', applicableGroups: ['practical', 'selection', 'writing'] },
+  { value: 'explanation', label: '해설', description: '문제 해설', icon: '💡', applicableGroups: ['practical', 'selection', 'writing'] },
+  
+  // 실전 그룹 전용
+  { value: 'choices', label: '선택지', description: '5지선다 선택지', icon: '🔢', applicableGroups: ['practical'] },
+  { value: 'given', label: '주어진 글', description: '박스형 주어진 글', icon: '📦', applicableGroups: ['practical'] },
+  
+  // 문장분석/서술형 그룹
+  { value: 'original', label: '원문', description: '영어 원문', icon: '🔤', applicableGroups: ['analysis', 'writing'] },
+  { value: 'translation', label: '해석', description: '한글 해석', icon: '🇰🇷', applicableGroups: ['analysis'] },
+  { value: 'grammar', label: '문법포인트', description: '문법 분석', icon: '📐', applicableGroups: ['analysis'] },
+  { value: 'vocabulary', label: '어휘', description: '단어/어휘 분석', icon: '📚', applicableGroups: ['analysis'] },
+  
+  // 서술형 그룹 전용
+  { value: 'hints', label: '힌트', description: '작성 힌트', icon: '💭', applicableGroups: ['writing'] },
+  { value: 'sentence', label: '문장(괄호)', description: '빈칸 문장', icon: '✏️', applicableGroups: ['writing'] },
+  
+  // 단어장 그룹 전용
+  { value: 'words', label: '단어목록', description: '단어장 데이터', icon: '📖', applicableGroups: ['vocabulary'] },
+]
+
+// 그룹별 정보
+const GROUP_INFO: { value: QuestionGroup; label: string; color: string }[] = [
+  { value: 'practical', label: '실전', color: 'blue' },
+  { value: 'selection', label: '선택/수정', color: 'purple' },
+  { value: 'writing', label: '서술형/영작', color: 'orange' },
+  { value: 'analysis', label: '문장분석', color: 'green' },
+  { value: 'vocabulary', label: '단어장', color: 'pink' },
+]
+
+// 기존 호환성을 위한 타입 별칭
+type QuestionRole = SlotRole
+
 interface DataTypeFormData {
   id: string | null
   name: string
@@ -29,6 +92,7 @@ interface DataTypeFormData {
   dependsOn: string[]
   difficulty: Difficulty
   recommendedModel: ModelId
+  availableRoles: QuestionRole[]
 }
 
 interface DataTypeFormProps {
@@ -56,6 +120,7 @@ const initialFormData: DataTypeFormData = {
   dependsOn: [],
   difficulty: 'medium',
   recommendedModel: 'gpt-4o-mini',
+  availableRoles: [],
 }
 
 export function DataTypeForm({
@@ -100,6 +165,7 @@ export function DataTypeForm({
       const promptId = (dataType as unknown as { prompt_id?: string }).prompt_id || null
       const difficulty = (dataType as unknown as { difficulty?: Difficulty }).difficulty || 'medium'
       const recommendedModel = (dataType as unknown as { recommended_model?: ModelId }).recommended_model || DIFFICULTY_MODEL_MAP[difficulty] || 'gpt-4o-mini'
+      const availableRoles = (dataType as unknown as { available_roles?: QuestionRole[] }).available_roles || []
       setFormData({
         id: dataType.id,
         name: dataType.name,
@@ -115,6 +181,7 @@ export function DataTypeForm({
         dependsOn: dataType.dependsOn || [],
         difficulty,
         recommendedModel: recommendedModel as ModelId,
+        availableRoles,
       })
       
       // 연결된 프롬프트 찾기
@@ -607,6 +674,214 @@ export function DataTypeForm({
             </div>
           )}
         </div>
+      </div>
+
+      {/* 레이아웃 슬롯 역할 (문제 유형 연계) */}
+      <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/30">
+        <h4 className="text-sm font-semibold text-emerald-800 mb-3">
+          🎯 레이아웃 슬롯 역할
+        </h4>
+        <p className="text-xs text-emerald-600 mb-3">
+          이 데이터가 문제 레이아웃의 어떤 슬롯에서 사용될 수 있는지 선택하세요.
+          문제 유형 정의 시 슬롯 매핑에 활용됩니다.
+        </p>
+        
+        {/* 선택된 역할 요약 */}
+        {formData.availableRoles.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3 p-2 bg-white rounded-lg border border-emerald-100">
+            <span className="text-xs text-muted-foreground mr-1">선택됨:</span>
+            {formData.availableRoles.map(roleValue => {
+              const role = SLOT_ROLES.find(r => r.value === roleValue)
+              return role ? (
+                <Badge key={roleValue} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                  {role.icon} {role.label}
+                </Badge>
+              ) : null
+            })}
+          </div>
+        )}
+        
+        <div className="space-y-4">
+          {/* 공통 역할 */}
+          <div>
+            <label className="text-xs font-medium text-gray-600 mb-2 block flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+              공통 (여러 그룹에서 사용)
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {SLOT_ROLES.filter(r => r.applicableGroups.length >= 3).map((role) => (
+                <label
+                  key={role.value}
+                  className={cn(
+                    'flex items-start gap-2 p-2 border rounded-lg cursor-pointer transition-all text-sm',
+                    formData.availableRoles.includes(role.value)
+                      ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500'
+                      : 'border-border hover:border-emerald-300 hover:bg-emerald-50/50 bg-white',
+                    !isEditing && 'opacity-60 cursor-not-allowed'
+                  )}
+                >
+                  <Checkbox
+                    checked={formData.availableRoles.includes(role.value)}
+                    onCheckedChange={(checked) => {
+                      if (!isEditing) return
+                      setFormData((prev) => ({
+                        ...prev,
+                        availableRoles: checked
+                          ? [...prev.availableRoles, role.value]
+                          : prev.availableRoles.filter((r) => r !== role.value),
+                      }))
+                    }}
+                    disabled={!isEditing}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{role.icon} {role.label}</span>
+                    <p className="text-xs text-muted-foreground truncate">{role.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          {/* 실전 그룹 역할 */}
+          <div>
+            <label className="text-xs font-medium text-blue-600 mb-2 block flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              📝 실전 그룹 전용
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {SLOT_ROLES.filter(r => r.applicableGroups.includes('practical') && r.applicableGroups.length < 3).map((role) => (
+                <label
+                  key={role.value}
+                  className={cn(
+                    'flex items-start gap-2 p-2 border rounded-lg cursor-pointer transition-all text-sm',
+                    formData.availableRoles.includes(role.value)
+                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                      : 'border-border hover:border-blue-300 hover:bg-blue-50/50 bg-white',
+                    !isEditing && 'opacity-60 cursor-not-allowed'
+                  )}
+                >
+                  <Checkbox
+                    checked={formData.availableRoles.includes(role.value)}
+                    onCheckedChange={(checked) => {
+                      if (!isEditing) return
+                      setFormData((prev) => ({
+                        ...prev,
+                        availableRoles: checked
+                          ? [...prev.availableRoles, role.value]
+                          : prev.availableRoles.filter((r) => r !== role.value),
+                      }))
+                    }}
+                    disabled={!isEditing}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{role.icon} {role.label}</span>
+                    <p className="text-xs text-muted-foreground truncate">{role.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          {/* 문장분석/서술형 그룹 역할 */}
+          <div>
+            <label className="text-xs font-medium text-green-600 mb-2 block flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              📖 문장분석 / ✍️ 서술형 그룹
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {SLOT_ROLES.filter(r => 
+                (r.applicableGroups.includes('analysis') || r.applicableGroups.includes('writing')) && 
+                r.applicableGroups.length < 3
+              ).map((role) => (
+                <label
+                  key={role.value}
+                  className={cn(
+                    'flex items-start gap-2 p-2 border rounded-lg cursor-pointer transition-all text-sm',
+                    formData.availableRoles.includes(role.value)
+                      ? 'border-green-500 bg-green-50 ring-1 ring-green-500'
+                      : 'border-border hover:border-green-300 hover:bg-green-50/50 bg-white',
+                    !isEditing && 'opacity-60 cursor-not-allowed'
+                  )}
+                >
+                  <Checkbox
+                    checked={formData.availableRoles.includes(role.value)}
+                    onCheckedChange={(checked) => {
+                      if (!isEditing) return
+                      setFormData((prev) => ({
+                        ...prev,
+                        availableRoles: checked
+                          ? [...prev.availableRoles, role.value]
+                          : prev.availableRoles.filter((r) => r !== role.value),
+                      }))
+                    }}
+                    disabled={!isEditing}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{role.icon} {role.label}</span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <p className="text-xs text-muted-foreground truncate">{role.description}</p>
+                      {role.applicableGroups.map(g => (
+                        <Badge key={g} variant="outline" className="text-[10px] px-1 py-0">
+                          {GROUP_INFO.find(gi => gi.value === g)?.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          {/* 단어장 그룹 역할 */}
+          <div>
+            <label className="text-xs font-medium text-pink-600 mb-2 block flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-pink-500"></span>
+              📖 단어장 그룹 전용
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {SLOT_ROLES.filter(r => r.applicableGroups.includes('vocabulary') && r.applicableGroups.length < 3).map((role) => (
+                <label
+                  key={role.value}
+                  className={cn(
+                    'flex items-start gap-2 p-2 border rounded-lg cursor-pointer transition-all text-sm',
+                    formData.availableRoles.includes(role.value)
+                      ? 'border-pink-500 bg-pink-50 ring-1 ring-pink-500'
+                      : 'border-border hover:border-pink-300 hover:bg-pink-50/50 bg-white',
+                    !isEditing && 'opacity-60 cursor-not-allowed'
+                  )}
+                >
+                  <Checkbox
+                    checked={formData.availableRoles.includes(role.value)}
+                    onCheckedChange={(checked) => {
+                      if (!isEditing) return
+                      setFormData((prev) => ({
+                        ...prev,
+                        availableRoles: checked
+                          ? [...prev.availableRoles, role.value]
+                          : prev.availableRoles.filter((r) => r !== role.value),
+                      }))
+                    }}
+                    disabled={!isEditing}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{role.icon} {role.label}</span>
+                    <p className="text-xs text-muted-foreground truncate">{role.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {formData.availableRoles.length === 0 && isEditing && (
+          <p className="text-xs text-amber-600 mt-3">
+            ⚠️ 최소 하나 이상의 역할을 선택하면 문제 유형 정의 시 슬롯 매핑이 더 쉬워집니다.
+          </p>
+        )}
       </div>
 
       {/* 의존성 설정 */}

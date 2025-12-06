@@ -12,7 +12,7 @@ export async function GET() {
         *,
         question_type_items (
           *,
-          data_types (id, name, target, has_answer)
+          data_type:data_types (id, name, target, has_answer)
         )
       `)
       .order('created_at', { ascending: true })
@@ -24,10 +24,10 @@ export async function GET() {
       ...qt,
       dataTypeList: qt.question_type_items
         ?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index)
-        .map((item: { id: string; data_types: { id: string; name: string }; role: string }) => ({
+        .map((item: { id: string; data_type: { id: string; name: string } | null; role: string }) => ({
           id: item.id,
-          dataTypeId: item.data_types.id,
-          dataTypeName: item.data_types.name,
+          dataTypeId: item.data_type?.id,
+          dataTypeName: item.data_type?.name || 'Unknown',
           role: item.role
         })) || []
     }))
@@ -57,24 +57,31 @@ export async function POST(request: NextRequest) {
     
     // 문제 유형(출력 유형) 생성
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const insertData: Record<string, unknown> = {
+      name: body.name.trim(),
+      description: body.description || null,
+      instruction: body.instruction || null,
+      purpose: body.purpose || 'assessment',
+      passage_transform: body.passageTransform || {},
+      output_config: body.outputConfig || {
+        requiresAnswer: true,
+        requiresExplanation: true,
+        answerFormat: 'single',
+        choiceCount: 5
+      },
+      extends_from: body.extendsFrom || null,
+      choice_layout: body.choiceLayout || 'vertical',
+      choice_marker: body.choiceMarker || 'circle',
+    }
+    
+    // prompt_id와 question_group은 컬럼이 있을 때만 추가
+    if (body.promptId) insertData.prompt_id = body.promptId
+    if (body.group) insertData.question_group = body.group
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: questionType, error: qtError } = await (supabase as any)
       .from('question_types')
-      .insert({
-        name: body.name.trim(),
-        description: body.description || null,
-        instruction: body.instruction || null,
-        purpose: body.purpose || 'assessment',
-        passage_transform: body.passageTransform || {},
-        output_config: body.outputConfig || {
-          requiresAnswer: true,
-          requiresExplanation: true,
-          answerFormat: 'single',
-          choiceCount: 5
-        },
-        extends_from: body.extendsFrom || null,
-        choice_layout: body.choiceLayout || 'vertical',
-        choice_marker: body.choiceMarker || 'circle'
-      })
+      .insert(insertData)
       .select()
       .single()
     

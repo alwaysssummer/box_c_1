@@ -6,11 +6,11 @@ import { MainContent, type ContentMode } from '@/components/layout/MainContent'
 import { RightPanel } from '@/components/layout/RightPanel'
 import { TextbookTree, SheetSelector, SplitDetailPanel, TextbookDetail, PassageDetail } from '@/components/features/textbook'
 import { SheetImportProvider } from '@/contexts/SheetImportContext'
-import { DataGenerateProvider } from '@/contexts/DataGenerateContext'
-import { DataGenerator, DataGeneratePanel } from '@/components/features/data-generate'
+import { StatusDashboard, ManageFilterPanel } from '@/components/features/status-dashboard'
+import { TwoStepGeneration } from '@/components/features/generation'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
-import { QuestionTypeList, QuestionTypeForm, type QuestionTypeItem } from '@/components/features/question-type'
+import { QuestionTypeList, QuestionTypeFormNew, type QuestionTypeItem } from '@/components/features/question-type'
 import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, TextbookWithUnits, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -21,8 +21,27 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('교재관리')
   const [settingMenu, setSettingMenu] = useState<SettingMenu>('데이터 유형')
   
-  // 교재관리 서브 모드 (문장분리, 데이터 생성, 문제 생성)
-  const [contentMode, setContentMode] = useState<ContentMode>('문장분리')
+  // 교재관리 서브 모드 (현황, 문장분리) - 원큐 출제 시스템으로 통합
+  const [contentMode, setContentMode] = useState<ContentMode>('현황')
+  
+  // 문제출제 모드 - 원큐 문제 생성용 지문 선택 (지문 단위 선택)
+  const [selectedPassageIdsForGenerate, setSelectedPassageIdsForGenerate] = useState<string[]>([])
+  
+  // 문제관리 모드 - 교재 선택 (멀티)
+  const [selectedTextbookIdsForManage, setSelectedTextbookIdsForManage] = useState<string[]>([])
+  
+  // 문제관리 모드 - 필터 상태
+  const [manageFilterType, setManageFilterType] = useState<'all' | 'dataType' | 'questionType'>('all')
+  const [manageSelectedTypeId, setManageSelectedTypeId] = useState<string>('all')
+  const [manageStatusFilter, setManageStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
+  
+  // 문제관리 모드 - 트리에서 선택한 노드 (필터 연동용)
+  const [selectedManageNode, setSelectedManageNode] = useState<{
+    type: 'group' | 'textbook' | 'unit' | 'passage'
+    id: string
+    name: string
+    textbookId?: string
+  } | null>(null)
   
   // 교재관리 상태
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,6 +76,41 @@ export default function AdminPage() {
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(true)
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null)
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+
+  // 현황 배지용 상태
+  const [statusInfo, setStatusInfo] = useState<Map<string, { completed: number; total: number }>>(new Map())
+
+  // ============ 현황 배지 함수 ============
+
+  const fetchStatusInfo = useCallback(async () => {
+    try {
+      const response = await fetch('/api/status')
+      if (!response.ok) throw new Error('Failed to fetch status')
+      const data = await response.json()
+      
+      // hierarchy에서 그룹/교재별 현황 추출
+      const newStatusInfo = new Map<string, { completed: number; total: number }>()
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data.hierarchy?.forEach((group: any) => {
+        newStatusInfo.set(group.id, { 
+          completed: group.passageCount, // 문장분리 완료된 것 기준
+          total: group.passageCount 
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        group.textbooks?.forEach((textbook: any) => {
+          newStatusInfo.set(textbook.id, { 
+            completed: textbook.passageCount,
+            total: textbook.passageCount 
+          })
+        })
+      })
+      
+      setStatusInfo(newStatusInfo)
+    } catch (error) {
+      console.error('Error fetching status info:', error)
+    }
+  }, [])
 
   // ============ 교재관리 함수들 ============
 
@@ -164,18 +218,51 @@ export default function AdminPage() {
   const handleSaveQuestionType = async (formData: {
     id: string | null
     name: string
+    group: string
+    subType?: string
     instruction: string
-    dataTypeList: { dataTypeId: string; role: string }[]
+    layoutTemplateId: string
+    slotMapping: { slotId: string; dataTypeId: string; dataTypeName: string }[]
+    hasAnswer: boolean
+    hasExplanation: boolean
     choiceLayout: string
     choiceMarker: string
+    isSet: boolean
+    setCount: number
+    generationMode: 'prompt_direct' | 'slot_based'
+    promptId: string | null
   }) => {
+    // 새 폼 데이터를 API 형식으로 변환
+    const apiData = {
+      id: formData.id,
+      name: formData.name,
+      instruction: formData.instruction,
+      // slotMapping을 dataTypeList로 변환
+      dataTypeList: formData.slotMapping.map(slot => ({
+        dataTypeId: slot.dataTypeId,
+        role: slot.slotId, // slotId를 role로 매핑
+      })),
+      choiceLayout: formData.choiceLayout,
+      choiceMarker: formData.choiceMarker,
+      // 새 필드들 (API에서 처리 필요)
+      group: formData.group,
+      subType: formData.subType,
+      layoutTemplateId: formData.layoutTemplateId,
+      hasAnswer: formData.hasAnswer,
+      hasExplanation: formData.hasExplanation,
+      isSet: formData.isSet,
+      setCount: formData.setCount,
+      // 출제 방식 관련
+      promptId: formData.generationMode === 'prompt_direct' ? formData.promptId : null,
+    }
+
     const url = formData.id ? `/api/question-types/${formData.id}` : '/api/question-types'
     const method = formData.id ? 'PATCH' : 'POST'
 
     const response = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData),
+      body: JSON.stringify(apiData),
     })
 
     if (!response.ok) throw new Error('Failed to save question type')
@@ -229,6 +316,8 @@ export default function AdminPage() {
     testPassageId: string | null
     preferredModel: ModelId
     status: 'draft' | 'testing' | 'confirmed'
+    isQuestionType: boolean
+    questionGroup: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
   }) => {
     const url = formData.id ? `/api/prompts/${formData.id}` : '/api/prompts'
     const method = formData.id ? 'PUT' : 'POST'
@@ -242,6 +331,7 @@ export default function AdminPage() {
     if (!response.ok) throw new Error('Failed to save prompt')
     
     await fetchPrompts()
+    await fetchQuestionTypes() // 문제 유형도 다시 불러오기
     setSelectedPrompt(null)
     setIsEditingPrompt(false)
   }
@@ -268,6 +358,13 @@ export default function AdminPage() {
     fetchQuestionTypes()
     fetchPrompts()
   }, [fetchGroups, fetchDataTypes, fetchQuestionTypes, fetchPrompts])
+
+  // 현황 모드일 때 현황 데이터 로드
+  useEffect(() => {
+    if (activeTab === '교재관리' && contentMode === '현황') {
+      fetchStatusInfo()
+    }
+  }, [activeTab, contentMode, fetchStatusInfo])
 
   // ============ 교재관리 헬퍼 함수들 ============
 
@@ -323,6 +420,19 @@ export default function AdminPage() {
   }
 
   const handleSelectNode = (node: TreeNode, parentGroup?: TreeNode, parentTextbook?: TreeNode, parentUnit?: TreeNode) => {
+    // 문제관리 모드일 때 필터 연동용 노드 저장
+    if (contentMode === '문제관리') {
+      if (node.type === 'group') {
+        setSelectedManageNode({ type: 'group', id: node.id, name: node.name })
+      } else if (node.type === 'textbook') {
+        setSelectedManageNode({ type: 'textbook', id: node.id, name: node.name })
+      } else if (node.type === 'unit' && parentTextbook) {
+        setSelectedManageNode({ type: 'unit', id: node.id, name: node.name, textbookId: parentTextbook.id })
+      } else if (node.type === 'passage' && parentTextbook) {
+        setSelectedManageNode({ type: 'passage', id: node.id, name: node.name, textbookId: parentTextbook.id })
+      }
+    }
+    
     if (node.type === 'group') {
       const group = groups.find((g) => g.id === node.id)
       if (group) {
@@ -651,8 +761,6 @@ export default function AdminPage() {
 
   // 교재관리 탭에서 문장분리 모드이고 그룹 선택 시 Provider로 감싸기
   const isSheetImportMode = activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup !== null
-  // 데이터 생성 모드
-  const isDataGenerateMode = activeTab === '교재관리' && contentMode === '데이터 생성'
 
   const mainLayout = (
     <div className="h-screen flex bg-muted/30">
@@ -732,6 +840,76 @@ export default function AdminPage() {
                   onReorderGroups={handleReorderGroups}
                   onReorderTextbooks={handleReorderTextbooks}
                   onReorderUnits={handleReorderUnits}
+                  selectionMode={contentMode === '문제출제' ? 'passage' : contentMode === '문제관리' ? 'textbook' : undefined}
+                  selectedTextbookIds={contentMode === '문제관리' ? selectedTextbookIdsForManage : []}
+                  selectedPassageIds={contentMode === '문제출제' ? selectedPassageIdsForGenerate : []}
+                  onToggleTextbookSelection={(textbookId) => {
+                    if (contentMode === '문제관리') {
+                      setSelectedTextbookIdsForManage(prev => 
+                        prev.includes(textbookId)
+                          ? prev.filter(id => id !== textbookId)
+                          : [...prev, textbookId]
+                      )
+                    }
+                  }}
+                  onToggleGroupSelection={(groupId, textbookIds) => {
+                    if (contentMode === '문제관리') {
+                      setSelectedTextbookIdsForManage(prev => {
+                        const allSelected = textbookIds.every(id => prev.includes(id))
+                        if (allSelected) {
+                          return prev.filter(id => !textbookIds.includes(id))
+                        } else {
+                          return [...new Set([...prev, ...textbookIds])]
+                        }
+                      })
+                    }
+                  }}
+                  onTogglePassageSelection={(passageId) => {
+                    if (contentMode === '문제출제') {
+                      setSelectedPassageIdsForGenerate(prev => 
+                        prev.includes(passageId)
+                          ? prev.filter(id => id !== passageId)
+                          : [...prev, passageId]
+                      )
+                    }
+                  }}
+                  onToggleUnitSelection={(unitId, passageIds) => {
+                    if (contentMode === '문제출제') {
+                      setSelectedPassageIdsForGenerate(prev => {
+                        const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
+                        if (allSelected) {
+                          return prev.filter(id => !passageIds.includes(id))
+                        } else {
+                          return [...new Set([...prev, ...passageIds])]
+                        }
+                      })
+                    }
+                  }}
+                  onToggleTextbookPassageSelection={(textbookId, passageIds) => {
+                    if (contentMode === '문제출제') {
+                      setSelectedPassageIdsForGenerate(prev => {
+                        const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
+                        if (allSelected) {
+                          return prev.filter(id => !passageIds.includes(id))
+                        } else {
+                          return [...new Set([...prev, ...passageIds])]
+                        }
+                      })
+                    }
+                  }}
+                  onToggleGroupPassageSelection={(groupId, passageIds) => {
+                    if (contentMode === '문제출제') {
+                      setSelectedPassageIdsForGenerate(prev => {
+                        const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
+                        if (allSelected) {
+                          return prev.filter(id => !passageIds.includes(id))
+                        } else {
+                          return [...new Set([...prev, ...passageIds])]
+                        }
+                      })
+                    }
+                  }}
+                  statusInfo={contentMode === '현황' ? statusInfo : undefined}
                 />
               </div>
             ) : (
@@ -759,6 +937,28 @@ export default function AdminPage() {
         contentMode={contentMode}
         onContentModeChange={setContentMode}
       >
+        {/* 교재관리 - 현황 모드 (통계만) */}
+        {activeTab === '교재관리' && contentMode === '현황' && (
+          <StatusDashboard mode="status" />
+        )}
+
+        {/* 교재관리 - 문제출제 모드 (2단계 시스템으로 일원화) */}
+        {activeTab === '교재관리' && contentMode === '문제출제' && (
+          <TwoStepGeneration selectedPassageIds={selectedPassageIdsForGenerate} />
+        )}
+
+        {/* 교재관리 - 문제관리 모드 */}
+        {activeTab === '교재관리' && contentMode === '문제관리' && (
+          <StatusDashboard 
+            mode="manage" 
+            selectedNode={selectedManageNode} 
+            selectedTextbookIds={selectedTextbookIdsForManage}
+            filterType={manageFilterType}
+            selectedTypeId={manageSelectedTypeId}
+            statusFilter={manageStatusFilter}
+          />
+        )}
+
         {/* 교재관리 - 문장분리 모드 */}
         {activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup && (
           <SheetSelector 
@@ -837,21 +1037,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* 교재관리 - 데이터 생성 모드 */}
-        {activeTab === '교재관리' && contentMode === '데이터 생성' && (
-          <DataGenerator />
-        )}
-
-        {/* 교재관리 - 문제 생성 모드 (향후 구현) */}
-        {activeTab === '교재관리' && contentMode === '문제 생성' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Database className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <p className="text-muted-foreground">문제 생성 기능은 향후 구현 예정입니다</p>
-            </div>
-          </div>
-        )}
-
         {/* 회원관리 */}
         {activeTab === '회원관리' && (
           <div className="flex items-center justify-center h-full">
@@ -911,9 +1096,10 @@ export default function AdminPage() {
 
         {/* 설정 - 문제 유형 */}
         {activeTab === '설정' && settingMenu === '문제 유형' && (isEditingQuestionType || selectedQuestionType) && (
-          <QuestionTypeForm
+          <QuestionTypeFormNew
             questionType={selectedQuestionType}
             allDataTypes={dataTypes}
+            allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
             isEditing={isEditingQuestionType}
             onSave={handleSaveQuestionType}
             onDelete={handleDeleteQuestionType}
@@ -921,12 +1107,6 @@ export default function AdminPage() {
             onCancel={() => {
               setIsEditingQuestionType(false)
               if (!selectedQuestionType) setSelectedQuestionType(null)
-            }}
-            layoutOptions={{
-              choiceLayout,
-              choiceMarker,
-              onLayoutChange: setChoiceLayout,
-              onMarkerChange: setChoiceMarker,
             }}
           />
         )}
@@ -950,15 +1130,15 @@ export default function AdminPage() {
         title={
           isSheetImportMode
             ? '📝 문장 분리'
-            : isDataGenerateMode
-              ? '📊 데이터 생성'
+            : activeTab === '교재관리' && contentMode === '문제관리'
+              ? '📋 상세 정보'
               : activeTab === '설정' && settingMenu === '프롬프트'
                 ? '프롬프트 목록'
-                : activeTab === '설정' && settingMenu === '데이터 유형'
-                  ? '데이터 유형 목록'
-                  : activeTab === '설정' && settingMenu === '문제 유형'
-                    ? '문제 유형 목록'
-                    : '확장 기능'
+              : activeTab === '설정' && settingMenu === '데이터 유형'
+                ? '데이터 유형 목록'
+                : activeTab === '설정' && settingMenu === '문제 유형'
+                  ? '문제 유형 목록'
+                  : '확장 기능'
         }
       >
         {/* 설정 - 프롬프트 목록 */}
@@ -1059,13 +1239,26 @@ export default function AdminPage() {
         {/* 교재관리 - 문장 분리 패널 */}
         {isSheetImportMode && <SplitDetailPanel />}
 
-        {/* 교재관리 - 데이터 생성 패널 */}
-        {isDataGenerateMode && (
-          <DataGeneratePanel />
+        {/* 교재관리 - 문제관리 모드: 필터 조건 */}
+        {activeTab === '교재관리' && contentMode === '문제관리' && (
+          <ManageFilterPanel
+            filterType={manageFilterType}
+            selectedTypeId={manageSelectedTypeId}
+            statusFilter={manageStatusFilter}
+            onFilterTypeChange={setManageFilterType}
+            onSelectedTypeIdChange={setManageSelectedTypeId}
+            onStatusFilterChange={setManageStatusFilter}
+            onReset={() => {
+              setManageFilterType('all')
+              setManageSelectedTypeId('all')
+              setManageStatusFilter('all')
+            }}
+          />
         )}
 
         {/* 기본 메시지 */}
-        {!isSheetImportMode && !isDataGenerateMode && activeTab !== '설정' && (
+        {!isSheetImportMode && activeTab !== '설정' && 
+         !(activeTab === '교재관리' && contentMode === '문제관리') && (
           <p className="text-muted-foreground text-sm">현재 작업과 관련된 확장 기능이 여기에 표시됩니다.</p>
         )}
       </RightPanel>
@@ -1075,11 +1268,6 @@ export default function AdminPage() {
   // 교재관리 - 문장분리 모드일 때 SheetImportProvider로 감싸기
   if (isSheetImportMode) {
     return <SheetImportProvider>{mainLayout}</SheetImportProvider>
-  }
-
-  // 교재관리 - 데이터 생성 모드일 때 DataGenerateProvider로 감싸기
-  if (isDataGenerateMode) {
-    return <DataGenerateProvider>{mainLayout}</DataGenerateProvider>
   }
 
   return mainLayout

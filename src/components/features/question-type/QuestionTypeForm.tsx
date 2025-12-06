@@ -27,6 +27,8 @@ import {
   ArrowUp,
   ArrowDown,
   AlertTriangle,
+  Star,
+  CheckCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { QuestionTypeItem } from './QuestionTypeList'
@@ -62,12 +64,20 @@ interface QuestionTypeFormProps {
   }
 }
 
-const ROLES = [
+type QuestionRole = 'body' | 'choices' | 'answer' | 'explanation'
+
+const ROLES: { value: QuestionRole; label: string }[] = [
   { value: 'body', label: '본문' },
   { value: 'choices', label: '선택지' },
   { value: 'answer', label: '정답' },
   { value: 'explanation', label: '해설' },
 ]
+
+// 데이터 유형이 특정 역할에 적합한지 확인
+const isDataTypeRecommendedForRole = (dataType: DataTypeItem, role: QuestionRole): boolean => {
+  const availableRoles = (dataType as unknown as { available_roles?: QuestionRole[] }).available_roles || []
+  return availableRoles.includes(role)
+}
 
 const initialFormData: QuestionTypeFormData = {
   id: null,
@@ -326,17 +336,30 @@ export function QuestionTypeForm({
                         }
                         disabled={!isEditing}
                       >
-                        <SelectTrigger className="h-7 text-xs w-24">
+                        <SelectTrigger className="h-7 text-xs w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {ROLES.map((role) => (
-                            <SelectItem key={role.value} value={role.value}>
-                              {role.label}
-                            </SelectItem>
-                          ))}
+                          {ROLES.map((role) => {
+                            const isRecommended = dataType && isDataTypeRecommendedForRole(dataType, role.value)
+                            return (
+                              <SelectItem key={role.value} value={role.value}>
+                                <div className="flex items-center gap-1">
+                                  {isRecommended && <Star className="w-3 h-3 text-amber-500" />}
+                                  {role.label}
+                                  {isRecommended && <span className="text-xs text-amber-600">(추천)</span>}
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
                         </SelectContent>
                       </Select>
+                      {dataType && !isDataTypeRecommendedForRole(dataType, item.role) && (
+                        <span className="text-xs text-amber-600">⚠️ 부적합</span>
+                      )}
+                      {dataType && isDataTypeRecommendedForRole(dataType, item.role) && (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                      )}
                     </div>
                   </div>
                 )
@@ -418,32 +441,104 @@ export function QuestionTypeForm({
 
       {/* 데이터 유형 선택 다이얼로그 */}
       <Dialog open={showDataTypeSelector} onOpenChange={setShowDataTypeSelector}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>데이터 유형 선택</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 max-h-96 overflow-auto py-4">
+          <div className="space-y-4 max-h-96 overflow-auto py-4">
             {allDataTypes.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 등록된 데이터 유형이 없습니다
               </p>
             ) : (
-              allDataTypes.map((dt) => (
-                <Button
-                  key={dt.id}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => handleAddDataType(dt)}
-                >
-                  <div className="text-left">
-                    <div className="text-sm font-medium">{dt.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {dt.target === 'passage' ? '지문' : '문장'} •{' '}
-                      {dt.has_answer ? '정답有' : '자료형'}
+              <>
+                {/* 역할별 추천 데이터 유형 */}
+                {ROLES.map((role) => {
+                  const recommendedTypes = allDataTypes.filter((dt) => 
+                    isDataTypeRecommendedForRole(dt, role.value)
+                  )
+                  if (recommendedTypes.length === 0) return null
+                  
+                  return (
+                    <div key={role.value}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Star className="w-4 h-4 text-amber-500" />
+                        <span className="text-sm font-medium text-amber-700">
+                          {role.label} 역할 추천
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {recommendedTypes.map((dt) => (
+                          <Button
+                            key={`${role.value}-${dt.id}`}
+                            variant="outline"
+                            className="justify-start h-auto py-2 border-amber-200 bg-amber-50/50 hover:bg-amber-100"
+                            onClick={() => {
+                              const newItem = {
+                                id: `temp-${Date.now()}`,
+                                dataTypeId: dt.id,
+                                dataTypeName: dt.name,
+                                role: role.value,
+                              }
+                              setFormData((prev) => ({
+                                ...prev,
+                                dataTypeList: [...prev.dataTypeList, newItem],
+                              }))
+                              setShowDataTypeSelector(false)
+                            }}
+                          >
+                            <div className="text-left">
+                              <div className="text-sm font-medium flex items-center gap-1">
+                                {dt.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                → {role.label}
+                              </div>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </Button>
-              ))
+                  )
+                })}
+
+                {/* 구분선 */}
+                <div className="border-t pt-4">
+                  <span className="text-sm font-medium text-muted-foreground">전체 데이터 유형</span>
+                </div>
+
+                {/* 전체 데이터 유형 */}
+                <div className="grid grid-cols-2 gap-2">
+                  {allDataTypes.map((dt) => {
+                    const availableRoles = (dt as unknown as { available_roles?: QuestionRole[] }).available_roles || []
+                    return (
+                      <Button
+                        key={dt.id}
+                        variant="outline"
+                        className="justify-start h-auto py-2"
+                        onClick={() => handleAddDataType(dt)}
+                      >
+                        <div className="text-left">
+                          <div className="text-sm font-medium">{dt.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {dt.target === 'passage' ? '지문' : '문장'} •{' '}
+                            {dt.has_answer ? '정답有' : '자료형'}
+                          </div>
+                          {availableRoles.length > 0 && (
+                            <div className="flex gap-1 mt-1">
+                              {availableRoles.map((r) => (
+                                <Badge key={r} variant="outline" className="text-xs px-1 py-0">
+                                  {ROLES.find((role) => role.value === r)?.label}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </Button>
+                    )
+                  })}
+                </div>
+              </>
             )}
           </div>
         </DialogContent>
@@ -451,6 +546,7 @@ export function QuestionTypeForm({
     </div>
   )
 }
+
 
 
 

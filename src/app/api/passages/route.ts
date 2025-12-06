@@ -22,12 +22,15 @@ export async function GET(request: NextRequest) {
         units (
           id,
           name,
+          order_index,
           textbooks (
             id,
             name,
+            order_index,
             groups (
               id,
-              name
+              name,
+              order_index
             )
           )
         )
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    // 계층 구조로 변환하여 반환
+    // 계층 구조로 변환하여 반환 (orderIndex 포함)
     const structured = filteredData.map((passage) => ({
       id: passage.id,
       name: passage.name,
@@ -68,14 +71,17 @@ export async function GET(request: NextRequest) {
       unit: passage.units ? {
         id: passage.units.id,
         name: passage.units.name,
+        orderIndex: passage.units.order_index ?? 0,
       } : null,
       textbook: passage.units?.textbooks ? {
         id: passage.units.textbooks.id,
         name: passage.units.textbooks.name,
+        orderIndex: passage.units.textbooks.order_index ?? 0,
       } : null,
       group: passage.units?.textbooks?.groups ? {
         id: passage.units.textbooks.groups.id,
         name: passage.units.textbooks.groups.name,
+        orderIndex: passage.units.textbooks.groups.order_index ?? 0,
       } : null,
     }))
     

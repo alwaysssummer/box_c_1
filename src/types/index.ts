@@ -1,6 +1,91 @@
 // 모든 타입 re-export
 export * from './database'
 
+// 슬롯 시스템 타입 re-export
+export type {
+  SlotName,
+  QuestionGroup,
+  SlotDisplayInfo,
+  SlotStatus,
+} from '../lib/slot-system'
+
+export {
+  STANDARD_SLOTS,
+  SLOT_GROUPS,
+  REQUIRED_SLOTS,
+  OPTIONAL_SLOTS,
+  GROUP_INFO,
+  ALL_GROUPS,
+  getSlotLabel,
+  getSlotNameFromLabel,
+  isSlotAvailableInGroup,
+  isRequiredSlot,
+  getGroupSlotInfo,
+  validateSlotData,
+  extractSlotsForGroup,
+  getSlotDisplayInfoForGroup,
+  getSlotStatuses,
+} from '../lib/slot-system'
+
+// 프롬프트 파싱 타입 re-export
+export type {
+  ParsedSlotData,
+  ParseResult,
+  ParseOptions,
+} from '../lib/prompt-parser'
+
+export {
+  parsePromptResult,
+  parseChoices,
+  parseAnswer,
+  parseVocabulary,
+  parsePracticalQuestion,
+  parseAnalysisData,
+  generateOutputTemplate,
+  validateRequiredSlots,
+  PRACTICAL_PARSE_OPTIONS,
+  ANALYSIS_PARSE_OPTIONS,
+} from '../lib/prompt-parser'
+
+// 데이터 검증 타입 re-export
+export type {
+  PassageValidationResult,
+  ValidationResult,
+  SlotDataSource,
+  MissingDataInfo,
+  GenerateMissingRequest,
+  GenerateMissingResult,
+} from '../lib/data-validator'
+
+export {
+  analyzePassageSlots,
+  createValidationSummary,
+  evaluateValidation,
+  formatValidationForUI,
+  getPassageStatusIcon,
+  getPassageStatusColor,
+} from '../lib/data-validator'
+
+// 슬롯 매퍼 타입 re-export
+export type {
+  MappedQuestion,
+  MappingResult,
+  BatchMappingResult,
+  QuestionTemplate,
+  ChoiceMarker,
+} from '../lib/slot-mapper'
+
+export {
+  mapDataToTemplate,
+  batchMapDataToTemplate,
+  getChoiceMarker,
+  formatChoices,
+  formatAnswer,
+  renderQuestionAsText,
+  renderAnalysisAsText,
+  getDefaultTemplate,
+} from '../lib/slot-mapper'
+
 // UI 관련 타입
 export type ActiveTab = '회원관리' | '교재관리' | '설정'
 export type SettingMenu = '프롬프트' | '데이터 유형' | '문제 유형' | '시스템 설정'
@@ -200,16 +285,6 @@ export const NODE_LABELS: Record<string, string> = {
   unit: '단원',
   passage: '지문',
   sentence: '문장',
-}
-
-// AI 에러 정보
-export interface AIErrorResponse {
-  type: string
-  message: string
-  solution: string
-  severity?: string
-  canRetry: boolean
-  alternativeModel?: string | null
 }
 
 // 문장 분리 관련 타입
