@@ -776,6 +776,113 @@ export default function TeacherPage() {
     window.print()
   }
 
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  
+  const handlePdfDownload = async () => {
+    if (isGeneratingPdf || paginatedQuestions.length === 0) return
+    
+    setIsGeneratingPdf(true)
+    
+    try {
+      // 동적 import (클라이언트에서만)
+      const html2pdf = (await import('html2pdf.js')).default
+      
+      // PDF용 컨테이너 생성
+      const container = document.createElement('div')
+      container.style.cssText = 'position: absolute; left: -9999px; width: 210mm;'
+      document.body.appendChild(container)
+      
+      // 각 페이지별로 렌더링
+      for (let pageIndex = 0; pageIndex < paginatedQuestions.length; pageIndex++) {
+        const pageQuestions = paginatedQuestions[pageIndex]
+        const pageDiv = document.createElement('div')
+        pageDiv.style.cssText = `
+          width: 190mm;
+          min-height: 277mm;
+          padding: 10mm;
+          font-family: 'Pretendard', sans-serif;
+          font-size: ${density === 'compact' ? '9pt' : density === 'spacious' ? '11pt' : '10pt'};
+          line-height: ${density === 'compact' ? '1.4' : density === 'spacious' ? '1.8' : '1.6'};
+          page-break-after: always;
+        `
+        
+        // 이전 페이지까지의 누적 문제 수
+        const prevCount = paginatedQuestions.slice(0, pageIndex).reduce((sum, p) => sum + p.length, 0)
+        
+        pageQuestions.forEach((q, qIdx) => {
+          const qNum = prevCount + qIdx + 1
+          const qDiv = document.createElement('div')
+          qDiv.style.cssText = 'margin-bottom: 16px;'
+          
+          // 지시문
+          if (q.instruction) {
+            const instDiv = document.createElement('div')
+            instDiv.style.cssText = 'font-weight: 600; margin-bottom: 8px;'
+            instDiv.textContent = `${qNum}. ${q.instruction}`
+            qDiv.appendChild(instDiv)
+          }
+          
+          // 본문
+          if (q.body) {
+            const bodyDiv = document.createElement('div')
+            bodyDiv.style.cssText = 'padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 8px; white-space: pre-wrap;'
+            bodyDiv.textContent = q.body
+            qDiv.appendChild(bodyDiv)
+          }
+          
+          // 선택지
+          if (q.choices) {
+            const choicesDiv = document.createElement('div')
+            const choicesArray = typeof q.choices === 'string' 
+              ? q.choices.split('\n').filter(c => c.trim())
+              : q.choices
+            choicesDiv.innerHTML = choicesArray.map((c: string) => `<div style="margin: 4px 0;">${c}</div>`).join('')
+            qDiv.appendChild(choicesDiv)
+          }
+          
+          // 정답 (outputMode에 따라)
+          if (outputMode !== 'question' && q.answer) {
+            const ansDiv = document.createElement('div')
+            ansDiv.style.cssText = 'margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;'
+            ansDiv.innerHTML = `<span style="background: #dcfce7; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: #166534;">정답: ${q.answer}</span>`
+            qDiv.appendChild(ansDiv)
+          }
+          
+          // 해설
+          if (outputMode === 'question_answer_explanation' && q.explanation) {
+            const expDiv = document.createElement('div')
+            expDiv.style.cssText = 'margin-top: 8px; padding: 8px; background: #eff6ff; border-radius: 6px; font-size: 0.9em; color: #1e40af;'
+            expDiv.textContent = `해설: ${q.explanation}`
+            qDiv.appendChild(expDiv)
+          }
+          
+          pageDiv.appendChild(qDiv)
+        })
+        
+        container.appendChild(pageDiv)
+      }
+      
+      // PDF 생성
+      const opt = {
+        margin: 0,
+        filename: `문제출력_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      }
+      
+      await html2pdf().set(opt).from(container).save()
+      
+      // 정리
+      document.body.removeChild(container)
+    } catch (error) {
+      console.error('PDF 생성 오류:', error)
+      alert('PDF 생성 중 오류가 발생했습니다.')
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }
+
   return (
     <div className="h-screen flex bg-slate-50 print:block print:h-auto">
       {/* ========== 좌측 2열 선택 패널 (전체 자료실) ========== */}
@@ -1160,9 +1267,18 @@ export default function TeacherPage() {
               <Printer className="w-3 h-3 mr-1" />
               출력
             </Button>
-            <Button size="sm" className="h-7 text-xs">
-              <Download className="w-3 h-3 mr-1" />
-              PDF
+            <Button 
+              size="sm" 
+              className="h-7 text-xs"
+              onClick={handlePdfDownload}
+              disabled={isGeneratingPdf || paginatedQuestions.length === 0}
+            >
+              {isGeneratingPdf ? (
+                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Download className="w-3 h-3 mr-1" />
+              )}
+              {isGeneratingPdf ? '생성중...' : 'PDF'}
             </Button>
           </div>
         </div>
