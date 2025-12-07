@@ -1,195 +1,63 @@
 /**
- * 출제 2단계 시스템 - 2단계: 슬롯 자동 매핑
+ * 슬롯 매퍼 - 문제 조합 유틸리티
  * 
- * 저장된 슬롯 데이터를 템플릿 슬롯에 자동 매핑하여 문제 조합
+ * 슬롯 데이터를 문제 템플릿에 매핑하고 렌더링합니다.
  */
 
-import { SlotName, QuestionGroup, REQUIRED_SLOTS, getSlotLabel } from './slot-system'
+import { QuestionGroup } from './slot-system'
 
 // ============================================
 // 타입 정의
 // ============================================
 
-/**
- * 매핑된 문제 데이터
- */
+export type ChoiceMarker = 'circle' | 'number' | 'alpha' | 'paren'
+
+export interface QuestionTemplate {
+  id: string
+  name: string
+  group: QuestionGroup
+  requiredSlots: string[]
+  optionalSlots?: string[]
+}
+
 export interface MappedQuestion {
-  /** 슬롯별 데이터 */
-  slots: Record<SlotName, unknown>
-  
-  /** 매핑 메타 정보 */
+  slots: Record<string, unknown>
   meta: {
     passageId: string
     passageName: string
-    questionTypeId: string
-    questionTypeName: string
-    questionGroup: QuestionGroup
-    mappedAt: string
+    templateId: string
+    templateName: string
   }
 }
 
-/**
- * 매핑 결과
- */
-export interface MappingResult {
-  success: boolean
-  question?: MappedQuestion
-  errors: string[]
-  warnings: string[]
-}
-
-/**
- * 일괄 매핑 결과
- */
 export interface BatchMappingResult {
   total: number
   successful: number
   failed: number
   questions: MappedQuestion[]
-  errors: { passageId: string; error: string }[]
-}
-
-/**
- * 문제 유형 템플릿 정보
- */
-export interface QuestionTemplate {
-  id: string
-  name: string
-  group: QuestionGroup
-  requiredSlots: SlotName[]
-  optionalSlots?: SlotName[]
-  instruction?: string
-}
-
-// ============================================
-// 슬롯 매핑 함수
-// ============================================
-
-/**
- * 슬롯 데이터를 템플릿에 매핑
- */
-export function mapDataToTemplate(
-  slotData: Record<string, unknown>,
-  template: QuestionTemplate,
-  passageInfo: { id: string; name: string }
-): MappingResult {
-  const errors: string[] = []
-  const warnings: string[] = []
-  const slots: Record<string, unknown> = {}
-  
-  // 필수 슬롯 매핑
-  for (const slot of template.requiredSlots) {
-    if (slotData[slot] !== undefined && slotData[slot] !== null && slotData[slot] !== '') {
-      slots[slot] = slotData[slot]
-    } else {
-      errors.push(`필수 슬롯 누락: ${getSlotLabel(slot)}`)
-    }
-  }
-  
-  // 선택 슬롯 매핑
-  if (template.optionalSlots) {
-    for (const slot of template.optionalSlots) {
-      if (slotData[slot] !== undefined && slotData[slot] !== null && slotData[slot] !== '') {
-        slots[slot] = slotData[slot]
-      } else {
-        warnings.push(`선택 슬롯 없음: ${getSlotLabel(slot)}`)
-      }
-    }
-  }
-  
-  // 에러가 있으면 실패
-  if (errors.length > 0) {
-    return {
-      success: false,
-      errors,
-      warnings,
-    }
-  }
-  
-  // 성공
-  return {
-    success: true,
-    question: {
-      slots: slots as Record<SlotName, unknown>,
-      meta: {
-        passageId: passageInfo.id,
-        passageName: passageInfo.name,
-        questionTypeId: template.id,
-        questionTypeName: template.name,
-        questionGroup: template.group,
-        mappedAt: new Date().toISOString(),
-      },
-    },
-    errors,
-    warnings,
-  }
-}
-
-/**
- * 여러 지문에 대해 일괄 매핑
- */
-export function batchMapDataToTemplate(
-  passageSlotDataList: Array<{
+  errors: Array<{
     passageId: string
     passageName: string
-    slotData: Record<string, unknown>
-  }>,
-  template: QuestionTemplate
-): BatchMappingResult {
-  const questions: MappedQuestion[] = []
-  const errors: { passageId: string; error: string }[] = []
-  
-  for (const item of passageSlotDataList) {
-    const result = mapDataToTemplate(
-      item.slotData,
-      template,
-      { id: item.passageId, name: item.passageName }
-    )
-    
-    if (result.success && result.question) {
-      questions.push(result.question)
-    } else {
-      errors.push({
-        passageId: item.passageId,
-        error: result.errors.join(', '),
-      })
-    }
-  }
-  
-  return {
-    total: passageSlotDataList.length,
-    successful: questions.length,
-    failed: errors.length,
-    questions,
-    errors,
-  }
+    error: string
+  }>
 }
 
 // ============================================
-// 렌더링 유틸리티
+// 마커 유틸리티
 // ============================================
 
-/**
- * 선택지 마커 타입
- */
-export type ChoiceMarker = 'circle' | 'number' | 'alpha' | 'paren'
+const MARKERS: Record<ChoiceMarker, string[]> = {
+  circle: ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'],
+  number: ['1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.'],
+  alpha: ['A.', 'B.', 'C.', 'D.', 'E.', 'F.', 'G.', 'H.', 'I.', 'J.'],
+  paren: ['(1)', '(2)', '(3)', '(4)', '(5)', '(6)', '(7)', '(8)', '(9)', '(10)'],
+}
 
 /**
- * 선택지 마커 변환
+ * 마커 가져오기
  */
 export function getChoiceMarker(index: number, marker: ChoiceMarker): string {
-  switch (marker) {
-    case 'circle':
-      return '①②③④⑤⑥⑦⑧⑨⑩'[index] || `(${index + 1})`
-    case 'number':
-      return `${index + 1}.`
-    case 'alpha':
-      return `${'ABCDEFGHIJ'[index] || String.fromCharCode(65 + index)}.`
-    case 'paren':
-      return `(${index + 1})`
-    default:
-      return `${index + 1}.`
-  }
+  return MARKERS[marker][index] || `(${index + 1})`
 }
 
 /**
@@ -197,8 +65,8 @@ export function getChoiceMarker(index: number, marker: ChoiceMarker): string {
  */
 export function formatChoices(
   choices: string[],
-  marker: ChoiceMarker = 'circle',
-  layout: 'vertical' | 'horizontal' | 'grid2' = 'vertical'
+  marker: ChoiceMarker,
+  layout: 'vertical' | 'horizontal' | 'grid2'
 ): string {
   const formatted = choices.map((choice, i) => 
     `${getChoiceMarker(i, marker)} ${choice}`
@@ -208,38 +76,92 @@ export function formatChoices(
     case 'horizontal':
       return formatted.join('  ')
     case 'grid2':
-      // 2열 그리드
-      const rows: string[] = []
-      for (let i = 0; i < formatted.length; i += 2) {
-        if (i + 1 < formatted.length) {
-          rows.push(`${formatted[i]}    ${formatted[i + 1]}`)
-        } else {
-          rows.push(formatted[i])
-        }
-      }
-      return rows.join('\n')
+      return formatted.map((c, i) => i % 2 === 1 ? c + '\n' : c).join('  ')
     case 'vertical':
     default:
       return formatted.join('\n')
   }
 }
 
+// ============================================
+// 매핑 함수
+// ============================================
+
 /**
- * 정답 포맷팅
+ * 단일 지문을 템플릿에 매핑
  */
-export function formatAnswer(answer: unknown, marker: ChoiceMarker = 'circle'): string {
-  if (typeof answer === 'number') {
-    return getChoiceMarker(answer - 1, marker)
+export function mapDataToTemplate(
+  passageId: string,
+  passageName: string,
+  slotData: Record<string, unknown>,
+  template: QuestionTemplate
+): MappedQuestion | null {
+  // 필수 슬롯 검증
+  for (const slot of template.requiredSlots) {
+    if (!slotData[slot]) {
+      return null
+    }
   }
-  return String(answer)
+
+  return {
+    slots: { ...slotData },
+    meta: {
+      passageId,
+      passageName,
+      templateId: template.id,
+      templateName: template.name,
+    },
+  }
+}
+
+/**
+ * 여러 지문을 일괄 매핑
+ */
+export function batchMapDataToTemplate(
+  passages: Array<{
+    passageId: string
+    passageName: string
+    slotData: Record<string, unknown>
+  }>,
+  template: QuestionTemplate
+): BatchMappingResult {
+  const questions: MappedQuestion[] = []
+  const errors: Array<{ passageId: string; passageName: string; error: string }> = []
+
+  for (const passage of passages) {
+    const question = mapDataToTemplate(
+      passage.passageId,
+      passage.passageName,
+      passage.slotData,
+      template
+    )
+
+    if (question) {
+      questions.push(question)
+    } else {
+      errors.push({
+        passageId: passage.passageId,
+        passageName: passage.passageName,
+        error: '필수 슬롯이 누락되었습니다.',
+      })
+    }
+  }
+
+  return {
+    total: passages.length,
+    successful: questions.length,
+    failed: errors.length,
+    questions,
+    errors,
+  }
 }
 
 // ============================================
-// 템플릿 렌더러
+// 렌더링 함수
 // ============================================
 
 /**
- * 기본 문제 렌더러 (텍스트 출력)
+ * 문제를 텍스트로 렌더링
  */
 export function renderQuestionAsText(
   question: MappedQuestion,
@@ -256,59 +178,47 @@ export function renderQuestionAsText(
     choiceMarker = 'circle',
     choiceLayout = 'vertical',
   } = options
-  
-  const { slots } = question
+
   const lines: string[] = []
-  
+
   // 지시문
-  if (slots.instruction) {
-    lines.push(String(slots.instruction))
+  if (question.slots.instruction) {
+    lines.push(String(question.slots.instruction))
     lines.push('')
   }
-  
+
   // 본문
-  if (slots.body) {
-    lines.push(String(slots.body))
+  if (question.slots.body) {
+    lines.push(String(question.slots.body))
     lines.push('')
   }
-  
-  // 원문 (분석형)
-  if (slots.original) {
-    lines.push(String(slots.original))
-    lines.push('')
-  }
-  
-  // 해석 (분석형)
-  if (slots.translation) {
-    lines.push(String(slots.translation))
-    lines.push('')
-  }
-  
+
   // 선택지
-  if (slots.choices) {
-    const choices = Array.isArray(slots.choices) 
-      ? slots.choices 
-      : String(slots.choices).split('\n').filter(Boolean)
-    lines.push(formatChoices(choices as string[], choiceMarker, choiceLayout))
+  if (question.slots.choices) {
+    const choices = Array.isArray(question.slots.choices)
+      ? question.slots.choices
+      : String(question.slots.choices).split('\n').filter(Boolean)
+    
+    lines.push(formatChoices(choices, choiceMarker, choiceLayout))
     lines.push('')
   }
-  
+
   // 정답
-  if (includeAnswer && slots.answer !== undefined) {
-    lines.push(`정답: ${formatAnswer(slots.answer, choiceMarker)}`)
+  if (includeAnswer && question.slots.answer) {
+    lines.push(`정답: ${question.slots.answer}`)
   }
-  
+
   // 해설
-  if (includeExplanation && slots.explanation) {
+  if (includeExplanation && question.slots.explanation) {
     lines.push('')
-    lines.push(`해설: ${slots.explanation}`)
+    lines.push(`【해설】${question.slots.explanation}`)
   }
-  
+
   return lines.join('\n').trim()
 }
 
 /**
- * 분석형 데이터 렌더러
+ * 분석형 자료를 텍스트로 렌더링
  */
 export function renderAnalysisAsText(
   question: MappedQuestion,
@@ -317,71 +227,35 @@ export function renderAnalysisAsText(
     includeGrammar?: boolean
   } = {}
 ): string {
-  const { includeVocabulary = true, includeGrammar = true } = options
-  const { slots } = question
+  const { includeVocabulary = true, includeGrammar = false } = options
   const lines: string[] = []
-  
+
   // 원문
-  if (slots.original) {
+  if (question.slots.original) {
     lines.push('【원문】')
-    lines.push(String(slots.original))
+    lines.push(String(question.slots.original))
     lines.push('')
   }
-  
+
   // 해석
-  if (slots.translation) {
+  if (question.slots.translation) {
     lines.push('【해석】')
-    lines.push(String(slots.translation))
+    lines.push(String(question.slots.translation))
     lines.push('')
   }
-  
+
   // 어휘
-  if (includeVocabulary && slots.vocabulary) {
+  if (includeVocabulary && question.slots.vocabulary) {
     lines.push('【어휘】')
-    if (Array.isArray(slots.vocabulary)) {
-      lines.push(slots.vocabulary.map(v => {
-        if (typeof v === 'object' && v !== null && 'word' in v) {
-          const vocab = v as { word: string; meaning: string }
-          return `• ${vocab.word}: ${vocab.meaning}`
-        }
-        return `• ${String(v)}`
-      }).join('\n'))
-    } else {
-      lines.push(String(slots.vocabulary))
-    }
+    lines.push(String(question.slots.vocabulary))
     lines.push('')
   }
-  
+
   // 문법
-  if (includeGrammar && slots.grammar) {
+  if (includeGrammar && question.slots.grammar) {
     lines.push('【문법】')
-    lines.push(String(slots.grammar))
+    lines.push(String(question.slots.grammar))
   }
-  
+
   return lines.join('\n').trim()
 }
-
-// ============================================
-// 그룹별 기본 템플릿
-// ============================================
-
-/**
- * 그룹별 기본 템플릿 생성
- */
-export function getDefaultTemplate(
-  group: QuestionGroup,
-  questionTypeId: string,
-  questionTypeName: string
-): QuestionTemplate {
-  const requiredSlots = REQUIRED_SLOTS[group] || []
-  
-  return {
-    id: questionTypeId,
-    name: questionTypeName,
-    group,
-    requiredSlots,
-  }
-}
-
-
-

@@ -231,10 +231,6 @@ export function DataTypeForm({
     })
   }
 
-  // 확정된 프롬프트만 필터링
-  const confirmedPrompts = prompts.filter(p => p.status === 'confirmed')
-  const otherPrompts = prompts.filter(p => p.status !== 'confirmed')
-  
   const availableDataTypes = allDataTypes.filter((dt) => dt.id !== formData.id)
 
   return (
@@ -339,14 +335,6 @@ export function DataTypeForm({
                 등록된 프롬프트가 없습니다.<br />
                 설정 {">"} 프롬프트에서 먼저 등록해주세요.
               </div>
-            ) : confirmedPrompts.length === 0 ? (
-              <div className="text-center py-4">
-                <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-yellow-500" />
-                <p className="text-sm text-muted-foreground">
-                  확정된 프롬프트가 없습니다.<br />
-                  프롬프트를 테스트하고 &quot;확정&quot; 상태로 변경해주세요.
-                </p>
-              </div>
             ) : (
               <>
                 <Select
@@ -373,44 +361,16 @@ export function DataTypeForm({
                     <SelectValue placeholder="프롬프트 선택..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* 확정된 프롬프트 (권장) */}
-                    {confirmedPrompts.length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-xs text-green-600 font-semibold">✅ 확정됨 (권장)</div>
-                        {confirmedPrompts.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            <span className="flex items-center gap-2">
-                              <span>{p.name}</span>
-                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700">확정</Badge>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    
-                    {/* 기타 프롬프트 (경고와 함께 표시) */}
-                    {otherPrompts.length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-xs text-gray-400 font-semibold mt-2 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          미확정 (권장하지 않음)
-                        </div>
-                        {otherPrompts.map(p => (
-                          <SelectItem key={p.id} value={p.id} className="opacity-60">
-                            <span className="flex items-center gap-2">
-                              <span>{p.name}</span>
-                              <Badge variant="outline" className={cn(
-                                'text-xs',
-                                p.status === 'testing' && 'bg-yellow-50 text-yellow-700',
-                                p.status === 'draft' && 'bg-gray-50 text-gray-500'
-                              )}>
-                                {p.status === 'testing' ? '테스트' : '초안'}
-                              </Badge>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
+                    {prompts.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span className="flex items-center gap-2">
+                          <span>{p.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {p.category}
+                          </Badge>
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
@@ -421,31 +381,10 @@ export function DataTypeForm({
                       <span className="font-medium text-sm text-foreground">
                         {selectedPromptForForm.name}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          variant="secondary" 
-                          className={cn(
-                            'text-xs',
-                            selectedPromptForForm.status === 'confirmed' && 'bg-green-100 text-green-700',
-                            selectedPromptForForm.status === 'testing' && 'bg-yellow-100 text-yellow-700',
-                            selectedPromptForForm.status === 'draft' && 'bg-gray-100 text-gray-700'
-                          )}
-                        >
-                          {PROMPT_STATUS.find(s => s.value === selectedPromptForForm.status)?.label}
-                        </Badge>
-                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {selectedPromptForForm.category}
+                      </Badge>
                     </div>
-                    
-                    {/* 미확정 경고 */}
-                    {selectedPromptForForm.status !== 'confirmed' && (
-                      <div className="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                        <span>
-                          이 프롬프트는 아직 확정되지 않았습니다. 
-                          프롬프트 관리에서 테스트 후 확정해주세요.
-                        </span>
-                      </div>
-                    )}
                     
                     {selectedPromptForForm.description && (
                       <p className="text-xs text-muted-foreground">

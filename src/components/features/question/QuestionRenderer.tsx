@@ -151,6 +151,22 @@ export function QuestionRenderer({
   // 정답 포맷
   const formattedAnswer = formatAnswer(question.answer, choiceMarker)
 
+  // 빈 문제 체크 (instruction, body, choices 모두 없는 경우)
+  const isEmpty = !question.instruction && !question.body && choiceList.length === 0
+  
+  if (isEmpty) {
+    return (
+      <div className={cn('p-4 bg-amber-50 border border-amber-200 rounded-lg', className)}>
+        <div className="flex items-center gap-2 text-amber-700 text-sm">
+          {questionNumber && (
+            <span className="font-medium">{questionNumber}.</span>
+          )}
+          <span>⚠️ 문제 내용이 비어있습니다. 재생성이 필요합니다.</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={cn(
       'space-y-4',
@@ -419,4 +435,5 @@ export function renderQuestionToText(
 }
 
 export default QuestionRenderer
+
 

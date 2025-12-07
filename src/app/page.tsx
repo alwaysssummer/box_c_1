@@ -10,7 +10,15 @@ import { StatusDashboard, ManageFilterPanel } from '@/components/features/status
 import { TwoStepGeneration } from '@/components/features/generation'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
-import { QuestionTypeList, QuestionTypeFormNew, type QuestionTypeItem } from '@/components/features/question-type'
+import { 
+  QuestionTypeList, 
+  QuestionTypeFormNew, 
+  QuestionTypeModeSelector,
+  PromptBasedForm,
+  type QuestionTypeItem,
+  type QuestionTypeMode,
+  type PromptBasedFormData,
+} from '@/components/features/question-type'
 import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, TextbookWithUnits, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -70,6 +78,8 @@ export default function AdminPage() {
   const [isEditingQuestionType, setIsEditingQuestionType] = useState(false)
   const [choiceLayout, setChoiceLayout] = useState('vertical')
   const [choiceMarker, setChoiceMarker] = useState('circle')
+  // 문제 유형 추가 모드 (null: 기본, 'select': 입구 선택, 'prompt_based': 프롬프트 원큐, 'slot_based': 슬롯 기반)
+  const [questionTypeAddMode, setQuestionTypeAddMode] = useState<QuestionTypeMode | 'select' | null>(null)
 
   // 프롬프트 상태
   const [prompts, setPrompts] = useState<Prompt[]>([])
@@ -1094,23 +1104,132 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* 설정 - 문제 유형 */}
-        {activeTab === '설정' && settingMenu === '문제 유형' && (isEditingQuestionType || selectedQuestionType) && (
-          <QuestionTypeFormNew
-            questionType={selectedQuestionType}
-            allDataTypes={dataTypes}
-            allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
-            isEditing={isEditingQuestionType}
-            onSave={handleSaveQuestionType}
-            onDelete={handleDeleteQuestionType}
-            onEdit={() => setIsEditingQuestionType(true)}
-            onCancel={() => {
-              setIsEditingQuestionType(false)
-              if (!selectedQuestionType) setSelectedQuestionType(null)
-            }}
+        {/* 설정 - 문제 유형: 입구 선택 */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && questionTypeAddMode === 'select' && (
+          <QuestionTypeModeSelector
+            onSelect={(mode) => setQuestionTypeAddMode(mode)}
+            onCancel={() => setQuestionTypeAddMode(null)}
           />
         )}
-        {activeTab === '설정' && settingMenu === '문제 유형' && !isEditingQuestionType && !selectedQuestionType && (
+
+        {/* 설정 - 문제 유형: 프롬프트 원큐 폼 */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && questionTypeAddMode === 'prompt_based' && (
+          <PromptBasedForm
+            existingData={null}
+            allPrompts={prompts.map(p => ({ 
+              id: p.id, 
+              name: p.name, 
+              category: p.category,
+              question_group: (p as { question_group?: string }).question_group,
+              status: p.status,
+            }))}
+            isEditing={true}
+            onSave={async (data: PromptBasedFormData) => {
+              // 프롬프트 기반 문제 유형 저장
+              const response = await fetch('/api/question-types', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: data.name,
+                  instruction: data.instruction || null,
+                  choice_layout: data.choiceLayout,
+                  choice_marker: data.choiceMarker,
+                  prompt_id: data.promptId,
+                  question_group: data.questionGroup,
+                }),
+              })
+              if (response.ok) {
+                await fetchQuestionTypes()
+                setQuestionTypeAddMode(null)
+              }
+            }}
+            onCancel={() => setQuestionTypeAddMode(null)}
+            onBack={() => setQuestionTypeAddMode('select')}
+          />
+        )}
+
+        {/* 설정 - 문제 유형: 슬롯 기반 폼 (신규) */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && questionTypeAddMode === 'slot_based' && (
+          <QuestionTypeFormNew
+            questionType={null}
+            allDataTypes={dataTypes}
+            allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
+            isEditing={true}
+            onSave={handleSaveQuestionType}
+            onDelete={async () => {}}
+            onEdit={() => {}}
+            onCancel={() => setQuestionTypeAddMode(null)}
+          />
+        )}
+
+        {/* 설정 - 문제 유형: 기존 편집/조회 */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && !questionTypeAddMode && (isEditingQuestionType || selectedQuestionType) && (
+          selectedQuestionType?.prompt_id ? (
+            // 프롬프트 기반 문제 유형 편집
+            <PromptBasedForm
+              existingData={{
+                id: selectedQuestionType.id,
+                name: selectedQuestionType.name,
+                prompt_id: selectedQuestionType.prompt_id || null,
+                instruction: selectedQuestionType.instruction,
+                choice_layout: selectedQuestionType.choice_layout,
+                choice_marker: selectedQuestionType.choice_marker,
+                question_group: selectedQuestionType.question_group || null,
+              }}
+              allPrompts={prompts.map(p => ({ 
+                id: p.id, 
+                name: p.name, 
+                category: p.category,
+                question_group: (p as { question_group?: string }).question_group,
+                status: p.status,
+              }))}
+              isEditing={isEditingQuestionType}
+              onSave={async (data: PromptBasedFormData) => {
+                if (!selectedQuestionType) return
+                const response = await fetch(`/api/question-types/${selectedQuestionType.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: data.name,
+                    instruction: data.instruction || null,
+                    choice_layout: data.choiceLayout,
+                    choice_marker: data.choiceMarker,
+                    prompt_id: data.promptId,
+                    question_group: data.questionGroup,
+                  }),
+                })
+                if (response.ok) {
+                  await fetchQuestionTypes()
+                  setIsEditingQuestionType(false)
+                }
+              }}
+              onDelete={handleDeleteQuestionType}
+              onEdit={() => setIsEditingQuestionType(true)}
+              onCancel={() => {
+                setIsEditingQuestionType(false)
+                if (!selectedQuestionType) setSelectedQuestionType(null)
+              }}
+            />
+          ) : (
+            // 슬롯 기반 문제 유형 편집 (기존)
+            <QuestionTypeFormNew
+              questionType={selectedQuestionType}
+              allDataTypes={dataTypes}
+              allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
+              isEditing={isEditingQuestionType}
+              onSave={handleSaveQuestionType}
+              onDelete={handleDeleteQuestionType}
+              onEdit={() => setIsEditingQuestionType(true)}
+              onCancel={() => {
+                setIsEditingQuestionType(false)
+                if (!selectedQuestionType) setSelectedQuestionType(null)
+              }}
+            />
+          )
+        )}
+
+        {/* 설정 - 문제 유형: 기본 안내 */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && !questionTypeAddMode && !isEditingQuestionType && !selectedQuestionType && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <Settings className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
@@ -1190,7 +1309,8 @@ export default function AdminPage() {
               }}
               onAdd={() => {
                 setSelectedQuestionType(null)
-                setIsEditingQuestionType(true)
+                setIsEditingQuestionType(false)
+                setQuestionTypeAddMode('select')  // 입구 선택 화면으로
                 setChoiceLayout('vertical')
                 setChoiceMarker('circle')
               }}

@@ -92,8 +92,7 @@ export async function POST(request: NextRequest) {
     const aiResult = result.response.text()
     
     // 6. 결과 파싱
-    const parseResult = parsePromptResult(aiResult)
-    const parsed = parseResult.data
+    const parsed = parsePromptResult(aiResult)
     
     // 7. generated_questions에 저장
     const { data: savedQuestion, error: saveError } = await supabase
@@ -101,11 +100,11 @@ export async function POST(request: NextRequest) {
       .insert({
         passage_id: passageId,
         question_type_id: questionTypeId,
-        instruction: (parsed.instruction as string) || questionType.instruction || '',
-        body: (parsed.body as string) || '',
+        instruction: parsed.instruction || questionType.instruction || '',
+        body: parsed.body || '',
         choices: parsed.choices || null,
-        answer: (parsed.answer as string) || '',
-        explanation: (parsed.explanation as string) || '',
+        answer: parsed.answer || '',
+        explanation: parsed.explanation || '',
         status: 'completed',
       })
       .select()

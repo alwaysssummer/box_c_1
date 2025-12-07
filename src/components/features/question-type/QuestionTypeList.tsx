@@ -51,7 +51,7 @@ export function QuestionTypeList({
       onAdd={onAdd}
       emptyIcon={<BookOpen className="w-8 h-8" />}
       emptyText="등록된 문제 유형이 없습니다"
-      addButtonText="슬롯 기반 문제 유형 추가"
+      addButtonText="+ 문제 유형 추가"
       getItemId={(qt) => qt.id}
       renderItem={(qt) => (
         <>

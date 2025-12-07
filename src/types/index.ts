@@ -21,7 +21,6 @@ export {
   isSlotAvailableInGroup,
   isRequiredSlot,
   getGroupSlotInfo,
-  validateSlotData,
   extractSlotsForGroup,
   getSlotDisplayInfoForGroup,
   getSlotStatuses,
@@ -29,9 +28,7 @@ export {
 
 // 프롬프트 파싱 타입 re-export
 export type {
-  ParsedSlotData,
-  ParseResult,
-  ParseOptions,
+  ParsedQuestionResult,
 } from '../lib/prompt-parser'
 
 export {
@@ -41,35 +38,28 @@ export {
   parseVocabulary,
   parsePracticalQuestion,
   parseAnalysisData,
-  generateOutputTemplate,
-  validateRequiredSlots,
-  PRACTICAL_PARSE_OPTIONS,
-  ANALYSIS_PARSE_OPTIONS,
 } from '../lib/prompt-parser'
 
 // 데이터 검증 타입 re-export
 export type {
   PassageValidationResult,
   ValidationResult,
-  SlotDataSource,
-  MissingDataInfo,
-  GenerateMissingRequest,
-  GenerateMissingResult,
+  ValidationSummary,
+  SlotValidationResult,
+  BatchValidationResult,
 } from '../lib/data-validator'
 
 export {
   analyzePassageSlots,
   createValidationSummary,
   evaluateValidation,
-  formatValidationForUI,
-  getPassageStatusIcon,
-  getPassageStatusColor,
+  validateSlotData,
+  batchValidateSlotData,
 } from '../lib/data-validator'
 
 // 슬롯 매퍼 타입 re-export
 export type {
   MappedQuestion,
-  MappingResult,
   BatchMappingResult,
   QuestionTemplate,
   ChoiceMarker,
@@ -80,10 +70,8 @@ export {
   batchMapDataToTemplate,
   getChoiceMarker,
   formatChoices,
-  formatAnswer,
   renderQuestionAsText,
   renderAnalysisAsText,
-  getDefaultTemplate,
 } from '../lib/slot-mapper'
 
 // UI 관련 타입

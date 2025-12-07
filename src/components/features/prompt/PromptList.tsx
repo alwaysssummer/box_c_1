@@ -38,12 +38,6 @@ export function PromptList({
             <Badge variant="outline" className="text-xs">
               {p.category}
             </Badge>
-            <Badge 
-              variant={p.status === 'confirmed' ? 'default' : 'secondary'} 
-              className="text-xs"
-            >
-              {p.status === 'confirmed' ? '확정' : p.status === 'testing' ? '테스트' : '초안'}
-            </Badge>
           </div>
         </>
       )}

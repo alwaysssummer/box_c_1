@@ -1,40 +1,37 @@
 /**
- * 출제 2단계 시스템 - 1단계: 사전데이터 검증
- * 
- * 문제 유형 출제 전 필요한 사전데이터가 준비되어 있는지 검증
+ * 데이터 검증 유틸리티
+ * 슬롯 데이터의 유효성을 검증합니다.
  */
 
-import { SlotName, REQUIRED_SLOTS, QuestionGroup } from './slot-system'
+import { SlotName, QuestionGroup, SLOT_GROUPS, REQUIRED_SLOTS, OPTIONAL_SLOTS } from './slot-system'
 
 // ============================================
 // 타입 정의
 // ============================================
 
-/**
- * 개별 지문의 검증 결과
- */
+export interface ValidationResult {
+  questionTypeId: string
+  questionTypeName: string
+  questionGroup?: QuestionGroup
+  requiredSlots: SlotName[]
+  optionalSlots?: SlotName[]
+  passageResults?: PassageValidationResult[]
+  passages?: PassageValidationResult[]
+  summary: ValidationSummary
+  canProceed: boolean
+  message: string
+}
+
 export interface PassageValidationResult {
   passageId: string
   passageName: string
   unitName?: string
   textbookName?: string
-  
-  /** 검증 상태 */
-  status: 'complete' | 'partial' | 'missing'
-  
-  /** 존재하는 슬롯 목록 */
+  status: 'ready' | 'partial' | 'empty'
   existingSlots: SlotName[]
-  
-  /** 누락된 슬롯 목록 */
   missingSlots: SlotName[]
-  
-  /** 필수 슬롯 중 누락된 것 */
   missingRequiredSlots: SlotName[]
-  
-  /** 선택 슬롯 중 누락된 것 */
   missingOptionalSlots: SlotName[]
-  
-  /** 슬롯별 상세 데이터 (있는 경우) */
   slotDetails?: Record<string, {
     dataTypeId: string
     dataTypeName: string
@@ -42,273 +39,229 @@ export interface PassageValidationResult {
   }>
 }
 
+export interface ValidationSummary {
+  totalPassages: number
+  readyPassages: number
+  partialPassages: number
+  emptyPassages: number
+  slotCoverage: Record<SlotName, {
+    count: number
+    percentage: number
+  }>
+}
+
+export interface SlotValidationResult {
+  isValid: boolean
+  passageId: string
+  passageName: string
+  errors: string[]
+  warnings: string[]
+  slots: Record<string, {
+    filled: boolean
+    value: unknown
+  }>
+}
+
+export interface BatchValidationResult {
+  total: number
+  valid: number
+  invalid: number
+  results: SlotValidationResult[]
+}
+
+// ============================================
+// 단일 지문 검증
+// ============================================
+
 /**
- * 전체 검증 결과
+ * 단일 지문의 슬롯 데이터 검증 (레거시 호환용)
  */
-export interface ValidationResult {
-  /** 검증 대상 문제 유형 */
-  questionTypeId: string
-  questionTypeName: string
-  questionGroup: QuestionGroup
-  
-  /** 필요한 슬롯 목록 */
-  requiredSlots: SlotName[]
-  
-  /** 전체 통계 */
-  summary: {
-    total: number
-    complete: number
-    partial: number
-    missing: number
+export function validateSlotData(
+  passageId: string,
+  passageName: string,
+  slotData: Record<string, unknown>,
+  requiredSlots: string[]
+): SlotValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const slots: Record<string, { filled: boolean; value: unknown }> = {}
+
+  // 필수 슬롯 검증
+  for (const slot of requiredSlots) {
+    const value = slotData[slot]
+    const filled = value !== undefined && value !== null && value !== ''
+    
+    slots[slot] = { filled, value }
+    
+    if (!filled) {
+      errors.push(`필수 슬롯 '${slot}'이(가) 비어있습니다.`)
+    }
   }
-  
-  /** 개별 지문 검증 결과 */
-  passages: PassageValidationResult[]
-  
-  /** 출제 가능 여부 */
-  canProceed: boolean
-  
-  /** 안내 메시지 */
-  message: string
+
+  // 모든 슬롯 기록
+  for (const [key, value] of Object.entries(slotData)) {
+    if (!slots[key]) {
+      slots[key] = { filled: value !== undefined && value !== null && value !== '', value }
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    passageId,
+    passageName,
+    errors,
+    warnings,
+    slots,
+  }
 }
 
 /**
- * 슬롯 데이터 소스 정보
+ * 여러 지문의 슬롯 데이터 일괄 검증
  */
-export interface SlotDataSource {
-  slotName: SlotName
-  dataTypeId: string
-  dataTypeName: string
-  isGenerated: boolean
+export function batchValidateSlotData(
+  passages: Array<{
+    passageId: string
+    passageName: string
+    slotData: Record<string, unknown>
+  }>,
+  requiredSlots: string[]
+): BatchValidationResult {
+  const results = passages.map(p =>
+    validateSlotData(p.passageId, p.passageName, p.slotData, requiredSlots)
+  )
+
+  return {
+    total: results.length,
+    valid: results.filter(r => r.isValid).length,
+    invalid: results.filter(r => !r.isValid).length,
+    results,
+  }
 }
 
 // ============================================
-// 검증 유틸리티 함수
+// API용 슬롯 분석 함수
 // ============================================
 
 /**
- * 지문의 슬롯 데이터 현황 분석
+ * 지문의 슬롯 상태 분석 (API 호환용)
  */
 export function analyzePassageSlots(
   slotData: Record<string, unknown>,
   requiredSlots: SlotName[],
-  group: QuestionGroup
+  questionGroup: QuestionGroup
 ): {
+  status: 'ready' | 'partial' | 'empty'
   existingSlots: SlotName[]
   missingSlots: SlotName[]
   missingRequiredSlots: SlotName[]
   missingOptionalSlots: SlotName[]
-  status: 'complete' | 'partial' | 'missing'
 } {
-  const groupRequiredSlots = REQUIRED_SLOTS[group] || []
+  const allSlots = SLOT_GROUPS[questionGroup] || []
+  const optionalSlots = OPTIONAL_SLOTS[questionGroup] || []
   
-  // 존재하는 슬롯
-  const existingSlots = requiredSlots.filter(
-    slot => slotData[slot] !== undefined && slotData[slot] !== null && slotData[slot] !== ''
-  )
-  
-  // 누락된 슬롯
-  const missingSlots = requiredSlots.filter(
-    slot => !existingSlots.includes(slot)
-  )
-  
-  // 필수 슬롯 중 누락된 것
-  const missingRequiredSlots = missingSlots.filter(
-    slot => groupRequiredSlots.includes(slot)
-  )
-  
-  // 선택 슬롯 중 누락된 것
-  const missingOptionalSlots = missingSlots.filter(
-    slot => !groupRequiredSlots.includes(slot)
-  )
-  
+  const existingSlots: SlotName[] = []
+  const missingSlots: SlotName[] = []
+  const missingRequiredSlots: SlotName[] = []
+  const missingOptionalSlots: SlotName[] = []
+
+  // 존재하는 슬롯 확인
+  for (const slot of allSlots) {
+    const value = slotData[slot]
+    const filled = value !== undefined && value !== null && value !== ''
+    
+    if (filled) {
+      existingSlots.push(slot)
+    } else {
+      missingSlots.push(slot)
+      if (requiredSlots.includes(slot)) {
+        missingRequiredSlots.push(slot)
+      } else if (optionalSlots.includes(slot)) {
+        missingOptionalSlots.push(slot)
+      }
+    }
+  }
+
   // 상태 결정
-  let status: 'complete' | 'partial' | 'missing'
-  if (missingRequiredSlots.length === 0 && missingSlots.length === 0) {
-    status = 'complete'
-  } else if (existingSlots.length === 0) {
-    status = 'missing'
-  } else {
+  let status: 'ready' | 'partial' | 'empty' = 'empty'
+  if (missingRequiredSlots.length === 0) {
+    status = 'ready'
+  } else if (existingSlots.length > 0) {
     status = 'partial'
   }
-  
+
   return {
+    status,
     existingSlots,
     missingSlots,
     missingRequiredSlots,
     missingOptionalSlots,
-    status,
   }
 }
 
 /**
- * 검증 결과 요약 생성
+ * 검증 요약 생성 (API 호환용)
  */
 export function createValidationSummary(
-  passages: PassageValidationResult[]
-): {
-  total: number
-  complete: number
-  partial: number
-  missing: number
-} {
+  passageResults: PassageValidationResult[]
+): ValidationSummary {
+  const slotCoverage: Record<string, { count: number; percentage: number }> = {}
+
+  // 모든 기존 슬롯 수집
+  const allExistingSlots: SlotName[] = []
+  for (const result of passageResults) {
+    for (const slot of result.existingSlots) {
+      allExistingSlots.push(slot)
+    }
+  }
+
+  // 슬롯별 커버리지 계산
+  const uniqueSlots = [...new Set(allExistingSlots)]
+  for (const slot of uniqueSlots) {
+    const count = allExistingSlots.filter(s => s === slot).length
+    slotCoverage[slot] = {
+      count,
+      percentage: passageResults.length > 0 ? (count / passageResults.length) * 100 : 0,
+    }
+  }
+
+  const readyPassages = passageResults.filter(r => r.status === 'ready').length
+  const partialPassages = passageResults.filter(r => r.status === 'partial').length
+  const emptyPassages = passageResults.filter(r => r.status === 'empty').length
+
   return {
-    total: passages.length,
-    complete: passages.filter(p => p.status === 'complete').length,
-    partial: passages.filter(p => p.status === 'partial').length,
-    missing: passages.filter(p => p.status === 'missing').length,
+    totalPassages: passageResults.length,
+    readyPassages,
+    partialPassages,
+    emptyPassages,
+    slotCoverage: slotCoverage as Record<SlotName, { count: number; percentage: number }>,
   }
 }
 
 /**
- * 출제 가능 여부 및 메시지 생성
+ * 검증 결과 평가 (API 호환용)
  */
 export function evaluateValidation(
-  summary: { total: number; complete: number; partial: number; missing: number }
-): { canProceed: boolean; message: string } {
-  if (summary.total === 0) {
+  summary: ValidationSummary
+): {
+  canProceed: boolean
+  message: string
+} {
+  if (summary.readyPassages === 0) {
     return {
       canProceed: false,
-      message: '검증할 지문이 없습니다.',
+      message: '사용 가능한 지문이 없습니다. 먼저 데이터를 생성하세요.',
     }
   }
-  
-  if (summary.complete === summary.total) {
+
+  if (summary.partialPassages > 0 || summary.emptyPassages > 0) {
     return {
       canProceed: true,
-      message: `✅ 모든 지문(${summary.total}개)이 출제 준비 완료되었습니다.`,
+      message: `${summary.readyPassages}개 지문만 사용 가능합니다. (${summary.partialPassages + summary.emptyPassages}개 준비 안됨)`,
     }
   }
-  
-  if (summary.complete > 0) {
-    return {
-      canProceed: true,
-      message: `⚠️ ${summary.total}개 중 ${summary.complete}개 지문만 출제 가능합니다. ${summary.partial + summary.missing}개는 데이터 생성이 필요합니다.`,
-    }
-  }
-  
+
   return {
-    canProceed: false,
-    message: `❌ 출제 가능한 지문이 없습니다. ${summary.total}개 지문 모두 데이터 생성이 필요합니다.`,
+    canProceed: true,
+    message: '모든 지문이 준비되었습니다.',
   }
 }
-
-// ============================================
-// 누락 데이터 생성 관련
-// ============================================
-
-/**
- * 누락 슬롯 → 필요 데이터 유형 매핑
- */
-export interface MissingDataInfo {
-  passageId: string
-  passageName: string
-  missingSlots: SlotName[]
-  suggestedDataTypes: {
-    slotName: SlotName
-    dataTypeId?: string
-    dataTypeName?: string
-    canGenerate: boolean
-  }[]
-}
-
-/**
- * 누락 데이터 생성 요청
- */
-export interface GenerateMissingRequest {
-  passageIds: string[]
-  dataTypeIds: string[]
-  targetSlots: SlotName[]
-}
-
-/**
- * 누락 데이터 생성 결과
- */
-export interface GenerateMissingResult {
-  success: boolean
-  generated: number
-  failed: number
-  errors: string[]
-  details: {
-    passageId: string
-    dataTypeId: string
-    status: 'success' | 'failed'
-    error?: string
-  }[]
-}
-
-// ============================================
-// 클라이언트용 검증 함수
-// ============================================
-
-/**
- * 검증 API 호출 결과를 UI용 데이터로 변환
- */
-export function formatValidationForUI(result: ValidationResult): {
-  statusIcon: string
-  statusColor: string
-  progressPercent: number
-  actionRequired: boolean
-  actionText: string
-} {
-  const { summary, canProceed } = result
-  
-  const progressPercent = summary.total > 0 
-    ? Math.round((summary.complete / summary.total) * 100) 
-    : 0
-  
-  if (summary.complete === summary.total) {
-    return {
-      statusIcon: '✅',
-      statusColor: 'green',
-      progressPercent: 100,
-      actionRequired: false,
-      actionText: '출제 진행',
-    }
-  }
-  
-  if (canProceed) {
-    return {
-      statusIcon: '⚠️',
-      statusColor: 'yellow',
-      progressPercent,
-      actionRequired: true,
-      actionText: `${summary.partial + summary.missing}개 데이터 생성 필요`,
-    }
-  }
-  
-  return {
-    statusIcon: '❌',
-    statusColor: 'red',
-    progressPercent,
-    actionRequired: true,
-    actionText: '데이터 생성 필요',
-  }
-}
-
-/**
- * 지문별 상태 아이콘
- */
-export function getPassageStatusIcon(status: 'complete' | 'partial' | 'missing'): string {
-  switch (status) {
-    case 'complete': return '✅'
-    case 'partial': return '⚠️'
-    case 'missing': return '❌'
-    default: return '❓'
-  }
-}
-
-/**
- * 지문별 상태 색상
- */
-export function getPassageStatusColor(status: 'complete' | 'partial' | 'missing'): string {
-  switch (status) {
-    case 'complete': return 'text-green-600'
-    case 'partial': return 'text-yellow-600'
-    case 'missing': return 'text-red-600'
-    default: return 'text-gray-600'
-  }
-}
-
-
-

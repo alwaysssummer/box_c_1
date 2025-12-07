@@ -60,7 +60,7 @@ export async function GET(
       console.error('Error fetching generated data:', dataError)
     }
 
-    // 생성된 문제 조회
+    // 생성된 문제 조회 (레이아웃 정보 포함)
     const { data: generatedQuestions, error: questionsError } = await supabase
       .from('generated_questions')
       .select(`
@@ -75,7 +75,7 @@ export async function GET(
         status,
         error_message,
         created_at,
-        question_type:question_types(id, name, purpose)
+        question_type:question_types(id, name, purpose, choice_layout, choice_marker)
       `)
       .eq('passage_id', passageId)
       .order('created_at', { ascending: false })
