@@ -170,3 +170,127 @@ export function parseAnalysisData(content: string): {
     grammar: parsed.grammar,
   }
 }
+
+/**
+ * 선택형(selection) 문제 데이터 파싱
+ */
+export function parseSelectionQuestion(content: string): {
+  instruction: string
+  body: string
+  options: string
+  answer: string
+  explanation: string
+} {
+  const parsed = parsePromptResult(content)
+  
+  return {
+    instruction: parsed.instruction,
+    body: parsed.body,
+    options: parsed.options,
+    answer: parsed.answer,
+    explanation: parsed.explanation,
+  }
+}
+
+/**
+ * 서술형(writing) 문제 데이터 파싱
+ */
+export function parseWritingQuestion(content: string): {
+  instruction: string
+  original: string
+  translation: string
+  hints: string
+  answer: string
+  explanation: string
+} {
+  const parsed = parsePromptResult(content)
+  
+  return {
+    instruction: parsed.instruction,
+    original: parsed.original,
+    translation: parsed.translation,
+    hints: parsed.hints,
+    answer: parsed.answer,
+    explanation: parsed.explanation,
+  }
+}
+
+/**
+ * 박스형(순서/삽입) 문제 데이터 파싱
+ */
+export function parseBoxQuestion(content: string): {
+  instruction: string
+  givenBox: string
+  body: string
+  choices: string[]
+  answer: number | string
+  explanation: string
+} {
+  const parsed = parsePromptResult(content)
+  
+  return {
+    instruction: parsed.instruction,
+    givenBox: parsed.givenBox,
+    body: parsed.body,
+    choices: parseChoices(parsed.choices),
+    answer: parseAnswer(parsed.answer),
+    explanation: parsed.explanation,
+  }
+}
+
+// ============================================
+// 그룹별 자동 파싱
+// ============================================
+
+import type { QuestionGroup } from './slot-system'
+
+/**
+ * 그룹에 맞는 파서 자동 선택
+ */
+export function parseByGroup(content: string, group: QuestionGroup): ParsedQuestionResult & {
+  parsedChoices?: string[]
+  parsedAnswer?: number | string
+  parsedVocabulary?: Array<{ word: string; meaning: string }>
+} {
+  const base = parsePromptResult(content)
+  
+  return {
+    ...base,
+    // 선택지가 있으면 배열로 변환
+    parsedChoices: base.choices ? parseChoices(base.choices) : undefined,
+    // 정답 파싱
+    parsedAnswer: base.answer ? parseAnswer(base.answer) : undefined,
+    // 어휘 파싱
+    parsedVocabulary: base.vocabulary ? parseVocabulary(base.vocabulary) : undefined,
+  }
+}
+
+/**
+ * 파싱 결과 검증 (필수 필드 체크)
+ */
+export function validateParsedResult(
+  parsed: ParsedQuestionResult,
+  group: QuestionGroup
+): { isValid: boolean; missingFields: string[] } {
+  const requiredFields: Record<QuestionGroup, (keyof ParsedQuestionResult)[]> = {
+    practical: ['instruction', 'choices', 'answer'],
+    selection: ['instruction', 'body', 'answer'],
+    writing: ['original', 'answer'],
+    analysis: ['original', 'translation'],
+    vocabulary: [],
+  }
+  
+  const required = requiredFields[group]
+  const missingFields: string[] = []
+  
+  for (const field of required) {
+    if (!parsed[field]) {
+      missingFields.push(field)
+    }
+  }
+  
+  return {
+    isValid: missingFields.length === 0,
+    missingFields,
+  }
+}

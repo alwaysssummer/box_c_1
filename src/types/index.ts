@@ -44,6 +44,11 @@ export {
   parseVocabulary,
   parsePracticalQuestion,
   parseAnalysisData,
+  parseSelectionQuestion,
+  parseWritingQuestion,
+  parseBoxQuestion,
+  parseByGroup,
+  validateParsedResult,
 } from '../lib/prompt-parser'
 
 // 데이터 검증 타입 re-export
