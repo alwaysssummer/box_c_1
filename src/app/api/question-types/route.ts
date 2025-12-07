@@ -70,13 +70,16 @@ export async function POST(request: NextRequest) {
         choiceCount: 5
       },
       extends_from: body.extendsFrom || null,
-      choice_layout: body.choiceLayout || 'vertical',
-      choice_marker: body.choiceMarker || 'circle',
+      // 스네이크/카멜 케이스 모두 지원
+      choice_layout: body.choice_layout || body.choiceLayout || 'vertical',
+      choice_marker: body.choice_marker || body.choiceMarker || 'circle',
     }
     
-    // prompt_id와 question_group은 컬럼이 있을 때만 추가
-    if (body.promptId) insertData.prompt_id = body.promptId
-    if (body.group) insertData.question_group = body.group
+    // prompt_id와 question_group은 컬럼이 있을 때만 추가 (스네이크/카멜 케이스 모두 지원)
+    const promptId = body.prompt_id || body.promptId
+    const questionGroup = body.question_group || body.group
+    if (promptId) insertData.prompt_id = promptId
+    if (questionGroup) insertData.question_group = questionGroup
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: questionType, error: qtError } = await (supabase as any)

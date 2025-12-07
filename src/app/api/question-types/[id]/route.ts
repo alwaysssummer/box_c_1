@@ -61,7 +61,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const supabase = await createClient()
     const body = await request.json()
     
-    // 문제 유형(출력 유형) 업데이트
+    // 문제 유형(출력 유형) 업데이트 (스네이크/카멜 케이스 모두 지원)
     const updateData: Record<string, unknown> = {}
     if (body.name !== undefined) updateData.name = body.name
     if (body.description !== undefined) updateData.description = body.description
@@ -70,11 +70,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (body.passageTransform !== undefined) updateData.passage_transform = body.passageTransform
     if (body.outputConfig !== undefined) updateData.output_config = body.outputConfig
     if (body.extendsFrom !== undefined) updateData.extends_from = body.extendsFrom
-    if (body.choiceLayout !== undefined) updateData.choice_layout = body.choiceLayout
-    if (body.choiceMarker !== undefined) updateData.choice_marker = body.choiceMarker
-    // 출제 방식 관련 필드
-    if (body.promptId !== undefined) updateData.prompt_id = body.promptId
-    if (body.group !== undefined) updateData.question_group = body.group
+    // 스네이크/카멜 케이스 모두 지원
+    if (body.choice_layout !== undefined || body.choiceLayout !== undefined) {
+      updateData.choice_layout = body.choice_layout || body.choiceLayout
+    }
+    if (body.choice_marker !== undefined || body.choiceMarker !== undefined) {
+      updateData.choice_marker = body.choice_marker || body.choiceMarker
+    }
+    // 출제 방식 관련 필드 (스네이크/카멜 케이스 모두 지원)
+    if (body.prompt_id !== undefined || body.promptId !== undefined) {
+      updateData.prompt_id = body.prompt_id || body.promptId
+    }
+    if (body.question_group !== undefined || body.group !== undefined) {
+      updateData.question_group = body.question_group || body.group
+    }
     
     const { data, error } = await supabase
       .from('question_types')
