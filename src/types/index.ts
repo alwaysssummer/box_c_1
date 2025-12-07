@@ -7,6 +7,8 @@ export type {
   QuestionGroup,
   SlotDisplayInfo,
   SlotStatus,
+  LayoutSubtype,
+  LayoutInfo,
 } from '../lib/slot-system'
 
 export {
@@ -16,6 +18,7 @@ export {
   OPTIONAL_SLOTS,
   GROUP_INFO,
   ALL_GROUPS,
+  GROUP_LAYOUTS,
   getSlotLabel,
   getSlotNameFromLabel,
   isSlotAvailableInGroup,
@@ -24,6 +27,9 @@ export {
   extractSlotsForGroup,
   getSlotDisplayInfoForGroup,
   getSlotStatuses,
+  getDefaultLayout,
+  getLayoutInfo,
+  isLayoutAvailable,
 } from '../lib/slot-system'
 
 // 프롬프트 파싱 타입 re-export

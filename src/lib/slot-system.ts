@@ -450,4 +450,148 @@ export function hasOutputFormat(content: string): boolean {
   return content.includes('[출력 형식]') || content.includes('[[instruction]]') || content.includes('[[original]]')
 }
 
+// ============================================
+// 그룹별 레이아웃 서브타입
+// ============================================
 
+/**
+ * 레이아웃 서브타입 정의
+ */
+export type LayoutSubtype = 
+  // 실전형 (practical)
+  | 'standard'      // 표준형: 지시문 + 본문 + 선택지
+  | 'with_box'      // 박스형: 주어진 글 + 본문 + 선택지 (순서/삽입)
+  | 'blank'         // 빈칸형: 본문에 밑줄 포함
+  // 선택형 (selection)
+  | 'binary'        // 양자택일: (A)/(B) 선택
+  | 'underline'     // 밑줄형: ①②③④⑤ 중 선택
+  // 서술형 (writing)
+  | 'arrange'       // 배열형: 어구 배열
+  | 'partial'       // 부분영작: 조건 영작
+  // 분석형 (analysis)
+  | 'vertical'      // 세로형: 원문-해석 세로 배치
+  | 'two_column'    // 2열형: 원문|해석 좌우 배치
+  // 단어형 (vocabulary)
+  | 'word_list'     // 단어목록
+  | 'word_test'     // 단어테스트 (빈칸)
+
+/**
+ * 레이아웃 서브타입 정보
+ */
+export interface LayoutInfo {
+  id: LayoutSubtype
+  label: string
+  description: string
+  preview: string  // ASCII 미리보기
+  defaultFor?: boolean  // 그룹 기본값 여부
+}
+
+/**
+ * 그룹별 지원 레이아웃
+ */
+export const GROUP_LAYOUTS: Record<QuestionGroup, LayoutInfo[]> = {
+  practical: [
+    {
+      id: 'standard',
+      label: '표준형',
+      description: '지시문 + 본문 + 5지선다',
+      preview: '┌─────────┐\n│ 지시문  │\n├─────────┤\n│  본문   │\n├─────────┤\n│ ①②③④⑤│\n└─────────┘',
+      defaultFor: true,
+    },
+    {
+      id: 'with_box',
+      label: '박스형',
+      description: '주어진 글 박스 + 본문 + 선택지 (순서/삽입용)',
+      preview: '┌─────────┐\n│ 지시문  │\n├─────────┤\n│▣주어진글│\n├─────────┤\n│  본문   │\n├─────────┤\n│ ①②③④⑤│\n└─────────┘',
+    },
+    {
+      id: 'blank',
+      label: '빈칸형',
+      description: '본문에 밑줄/빈칸 포함 (빈칸추론용)',
+      preview: '┌─────────┐\n│ 지시문  │\n├─────────┤\n│본문____│\n├─────────┤\n│ ①②③④⑤│\n└─────────┘',
+    },
+  ],
+  selection: [
+    {
+      id: 'binary',
+      label: '양자택일',
+      description: '(A)/(B) 중 택일 (어법/어휘)',
+      preview: '┌──────────────┐\n│①(A/B) ②(A/B)│\n│③(A/B) ④(A/B)│\n│⑤(A/B)       │\n└──────────────┘',
+      defaultFor: true,
+    },
+    {
+      id: 'underline',
+      label: '밑줄형',
+      description: '밑줄 친 부분 중 선택 (어법 틀린 것)',
+      preview: '┌──────────────┐\n│본문에 ①밑줄 │\n│②밑줄 ③밑줄  │\n│④밑줄 ⑤밑줄  │\n└──────────────┘',
+    },
+  ],
+  writing: [
+    {
+      id: 'arrange',
+      label: '배열형',
+      description: '어구를 순서대로 배열',
+      preview: '┌─────────────┐\n│해석: ...    │\n├─────────────┤\n│①②③④⑤배열│\n└─────────────┘',
+      defaultFor: true,
+    },
+    {
+      id: 'partial',
+      label: '부분영작',
+      description: '조건에 맞게 영작',
+      preview: '┌─────────────┐\n│조건: ...    │\n├─────────────┤\n│(     )영작  │\n└─────────────┘',
+    },
+  ],
+  analysis: [
+    {
+      id: 'vertical',
+      label: '세로형',
+      description: '원문-해석 세로 배치',
+      preview: '┌─────────┐\n│【원문】 │\n│English  │\n├─────────┤\n│【해석】 │\n│한글번역 │\n└─────────┘',
+      defaultFor: true,
+    },
+    {
+      id: 'two_column',
+      label: '2열형',
+      description: '원문|해석 좌우 배치',
+      preview: '┌────┬────┐\n│원문│해석│\n│Eng │한글│\n└────┴────┘',
+    },
+  ],
+  vocabulary: [
+    {
+      id: 'word_list',
+      label: '단어목록',
+      description: '단어-뜻 목록',
+      preview: '┌─────┬─────┐\n│word │ 뜻  │\n│word │ 뜻  │\n└─────┴─────┘',
+      defaultFor: true,
+    },
+    {
+      id: 'word_test',
+      label: '단어테스트',
+      description: '빈칸 채우기 형식',
+      preview: '┌─────┬─────┐\n│word │____│\n│____│ 뜻  │\n└─────┴─────┘',
+    },
+  ],
+}
+
+/**
+ * 그룹의 기본 레이아웃 가져오기
+ */
+export function getDefaultLayout(group: QuestionGroup): LayoutSubtype {
+  const layouts = GROUP_LAYOUTS[group]
+  const defaultLayout = layouts.find(l => l.defaultFor)
+  return defaultLayout?.id || layouts[0].id
+}
+
+/**
+ * 레이아웃 정보 가져오기
+ */
+export function getLayoutInfo(group: QuestionGroup, layoutId: LayoutSubtype): LayoutInfo | undefined {
+  return GROUP_LAYOUTS[group].find(l => l.id === layoutId)
+}
+
+/**
+ * 그룹에서 해당 레이아웃 사용 가능 여부
+ */
+export function isLayoutAvailable(group: QuestionGroup, layoutId: LayoutSubtype): boolean {
+  return GROUP_LAYOUTS[group].some(l => l.id === layoutId)
+}

@@ -15,7 +15,7 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 import { formatChoices, getChoiceMarker, ChoiceMarker } from '@/lib/slot-mapper'
-import { QuestionGroup } from '@/lib/slot-system'
+import { QuestionGroup, LayoutSubtype } from '@/lib/slot-system'
 
 // ============================================
 // 타입 정의
@@ -30,11 +30,15 @@ export interface QuestionData {
   choices?: string | string[] | null
   answer?: string | number | null
   explanation?: string | null
+  // 박스형 (순서/삽입)
+  givenBox?: string | null
   // 분석형 데이터
   original?: string | null
   translation?: string | null
   vocabulary?: Array<{ word: string; meaning: string }> | string | null
   grammar?: string | null
+  // 서술형 데이터
+  hints?: string | null
 }
 
 /**
@@ -44,6 +48,7 @@ export interface QuestionLayout {
   choiceLayout?: 'vertical' | 'horizontal' | 'grid2'
   choiceMarker?: ChoiceMarker
   questionGroup?: QuestionGroup
+  layoutSubtype?: LayoutSubtype
 }
 
 /**
@@ -141,9 +146,12 @@ export function QuestionRenderer({
     choiceLayout = 'vertical',
     choiceMarker = 'circle',
     questionGroup = 'practical',
+    layoutSubtype,
   } = layout
 
   const isAnalysisType = questionGroup === 'analysis'
+  const isTwoColumn = layoutSubtype === 'two_column'
+  const isWithBox = layoutSubtype === 'with_box'
   
   // 선택지 파싱
   const choiceList = parseChoices(question.choices)
@@ -152,7 +160,7 @@ export function QuestionRenderer({
   const formattedAnswer = formatAnswer(question.answer, choiceMarker)
 
   // 빈 문제 체크 (instruction, body, choices 모두 없는 경우)
-  const isEmpty = !question.instruction && !question.body && choiceList.length === 0
+  const isEmpty = !question.instruction && !question.body && choiceList.length === 0 && !question.original
   
   if (isEmpty) {
     return (
@@ -163,6 +171,40 @@ export function QuestionRenderer({
           )}
           <span>⚠️ 문제 내용이 비어있습니다. 재생성이 필요합니다.</span>
         </div>
+      </div>
+    )
+  }
+
+  // 분석형 2열 레이아웃
+  if (isAnalysisType && isTwoColumn && question.original) {
+    return (
+      <div className={cn('space-y-3', modeStyles[mode], className)}>
+        <div className="grid grid-cols-2 gap-4">
+          {/* 원문 (좌측) */}
+          <div className={cn(
+            'p-4 rounded-lg border bg-blue-50/50',
+            mode === 'print' && 'border-gray-300 bg-white'
+          )}>
+            <div className="text-xs font-semibold text-muted-foreground mb-2">【원문】</div>
+            <p className="whitespace-pre-wrap leading-relaxed text-sm">
+              {question.original}
+            </p>
+          </div>
+          {/* 해석 (우측) */}
+          <div className={cn(
+            'p-4 rounded-lg border bg-amber-50/50',
+            mode === 'print' && 'border-gray-300 bg-white'
+          )}>
+            <div className="text-xs font-semibold text-muted-foreground mb-2">【해석】</div>
+            <p className="whitespace-pre-wrap leading-relaxed text-sm">
+              {question.translation}
+            </p>
+          </div>
+        </div>
+        {/* 어휘 */}
+        {question.vocabulary && (
+          <VocabularySection vocabulary={question.vocabulary} mode={mode} />
+        )}
       </div>
     )
   }
@@ -183,6 +225,19 @@ export function QuestionRenderer({
         </div>
       )}
 
+      {/* 주어진 글 박스 (순서/삽입용) */}
+      {isWithBox && question.givenBox && (
+        <div className={cn(
+          'p-4 rounded-lg border-2 border-dashed border-primary/50 bg-primary/5',
+          mode === 'print' && 'border-gray-400 bg-gray-50'
+        )}>
+          <div className="text-xs font-semibold text-primary mb-2">【주어진 글】</div>
+          <p className="whitespace-pre-wrap leading-relaxed">
+            {question.givenBox}
+          </p>
+        </div>
+      )}
+
       {/* 본문 (실전형) */}
       {question.body && !isAnalysisType && (
         <div className={cn(
@@ -195,8 +250,8 @@ export function QuestionRenderer({
         </div>
       )}
 
-      {/* 원문 (분석형) */}
-      {isAnalysisType && question.original && (
+      {/* 원문 (분석형 - 세로형) */}
+      {isAnalysisType && question.original && !isTwoColumn && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-muted-foreground">【원문】</div>
           <div className={cn(
@@ -210,8 +265,8 @@ export function QuestionRenderer({
         </div>
       )}
 
-      {/* 해석 (분석형) */}
-      {isAnalysisType && question.translation && (
+      {/* 해석 (분석형 - 세로형) */}
+      {isAnalysisType && question.translation && !isTwoColumn && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-muted-foreground">【해석】</div>
           <div className={cn(
@@ -354,6 +409,40 @@ function ChoiceList({ choices, marker, layout, answer, mode }: ChoiceListProps) 
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ============================================
+// 어휘 섹션 컴포넌트
+// ============================================
+
+interface VocabularySectionProps {
+  vocabulary: Array<{ word: string; meaning: string }> | string
+  mode: RenderMode
+}
+
+function VocabularySection({ vocabulary, mode }: VocabularySectionProps) {
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-semibold text-muted-foreground">【어휘】</div>
+      <div className={cn(
+        'p-3 rounded-lg border bg-green-50/50',
+        mode === 'print' && 'border-gray-300 bg-white'
+      )}>
+        {Array.isArray(vocabulary) ? (
+          <ul className="space-y-1">
+            {vocabulary.map((v, i) => (
+              <li key={i} className="text-sm">
+                <span className="font-medium">{v.word}</span>
+                <span className="text-muted-foreground"> : {v.meaning}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="whitespace-pre-wrap text-sm">{vocabulary}</p>
+        )}
+      </div>
     </div>
   )
 }
