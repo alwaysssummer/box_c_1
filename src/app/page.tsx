@@ -7,7 +7,7 @@ import { RightPanel } from '@/components/layout/RightPanel'
 import { TextbookTree, SheetSelector, SplitDetailPanel, TextbookDetail, PassageDetail } from '@/components/features/textbook'
 import { SheetImportProvider } from '@/contexts/SheetImportContext'
 import { StatusDashboard, ManageFilterPanel } from '@/components/features/status-dashboard'
-import { TwoStepGeneration } from '@/components/features/generation'
+import { OneClickGeneration } from '@/components/features/generation'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
 import { 
@@ -952,9 +952,9 @@ export default function AdminPage() {
           <StatusDashboard mode="status" />
         )}
 
-        {/* 교재관리 - 문제출제 모드 (2단계 시스템으로 일원화) */}
+        {/* 교재관리 - 문제출제 모드 (원큐 시스템) */}
         {activeTab === '교재관리' && contentMode === '문제출제' && (
-          <TwoStepGeneration selectedPassageIds={selectedPassageIdsForGenerate} />
+          <OneClickGeneration selectedPassageIds={selectedPassageIdsForGenerate} />
         )}
 
         {/* 교재관리 - 문제관리 모드 */}
