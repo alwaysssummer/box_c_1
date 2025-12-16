@@ -896,32 +896,33 @@ export default function AdminPage() {
   const isSheetImportMode = activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup !== null
 
   const mainLayout = (
-    <div className="h-screen flex bg-muted/30">
+    <div className="h-screen flex bg-muted/30 overflow-hidden">
       {/* 좌측 사이드바 */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab)
-          setSelectedGroup(null)
-          setSelectedTextbook(null)
-          setSelectedPrompt(null)
-          setIsEditingPrompt(false)
-          setSelectedDataType(null)
-          setIsEditingDataType(false)
-          setSelectedQuestionType(null)
-          setIsEditingQuestionType(false)
-        }}
-        settingMenu={settingMenu}
-        setSettingMenu={(menu) => {
-          setSettingMenu(menu)
-          setSelectedPrompt(null)
-          setIsEditingPrompt(false)
-          setSelectedDataType(null)
-          setIsEditingDataType(false)
-          setSelectedQuestionType(null)
-          setIsEditingQuestionType(false)
-        }}
-      >
+      <div className="relative z-10">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab)
+            setSelectedGroup(null)
+            setSelectedTextbook(null)
+            setSelectedPrompt(null)
+            setIsEditingPrompt(false)
+            setSelectedDataType(null)
+            setIsEditingDataType(false)
+            setSelectedQuestionType(null)
+            setIsEditingQuestionType(false)
+          }}
+          settingMenu={settingMenu}
+          setSettingMenu={(menu) => {
+            setSettingMenu(menu)
+            setSelectedPrompt(null)
+            setIsEditingPrompt(false)
+            setSelectedDataType(null)
+            setIsEditingDataType(false)
+            setSelectedQuestionType(null)
+            setIsEditingQuestionType(false)
+          }}
+        >
         {/* 교재관리 탭 */}
         {activeTab === '교재관리' && (
           <div className="space-y-3">
@@ -1090,12 +1091,14 @@ export default function AdminPage() {
           </div>
         )}
 
-      </Sidebar>
+        </Sidebar>
+      </div>
 
       {/* 중앙 메인 콘텐츠 */}
-      <MainContent 
-        activeTab={activeTab} 
-        settingMenu={settingMenu}
+      <div className="flex-1 relative z-0">
+        <MainContent 
+          activeTab={activeTab} 
+          settingMenu={settingMenu}
         contentMode={contentMode}
         onContentModeChange={setContentMode}
       >
@@ -1463,9 +1466,11 @@ export default function AdminPage() {
         {activeTab === '설정' && settingMenu === '시스템 설정' && (
           <SystemSettings />
         )}
-      </MainContent>
+        </MainContent>
+      </div>
 
       {/* 우측 패널 */}
+      <div className="relative z-0">
       <RightPanel
         title={
           isSheetImportMode
@@ -1588,7 +1593,8 @@ export default function AdminPage() {
          !(activeTab === '교재관리' && contentMode === '문제관리') && (
           <p className="text-muted-foreground text-sm">현재 작업과 관련된 확장 기능이 여기에 표시됩니다.</p>
         )}
-      </RightPanel>
+        </RightPanel>
+      </div>
     </div>
   )
 

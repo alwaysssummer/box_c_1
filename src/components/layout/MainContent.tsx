@@ -32,9 +32,9 @@ export function MainContent({
   const contentModes: ContentMode[] = ['현황', '문장분리', '문제출제', '문제관리']
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
       {/* 헤더 */}
-      <div className="h-14 bg-white border-b border-border flex items-center px-6 shrink-0">
+      <div className="h-14 bg-white border-b border-border flex items-center px-6 shrink-0 z-10">
         <h2 className="text-lg font-semibold text-foreground">{getTitle()}</h2>
         
         {/* 교재관리 서브 탭 */}

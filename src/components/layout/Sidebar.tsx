@@ -22,9 +22,9 @@ export function Sidebar({
   children,
 }: SidebarProps) {
   return (
-    <div className="w-56 bg-white border-r border-border flex flex-col">
+    <div className="w-56 h-screen bg-white border-r border-border flex flex-col shrink-0">
       {/* 탭 메뉴 */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border shrink-0">
         {tabs.map((tab) => (
           <button
             key={tab}

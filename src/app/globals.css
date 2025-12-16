@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* 레이아웃 겹침 방지 */
+body, html {
+  overflow: hidden;
+}
+
 /* GitHub-inspired color scheme */
 :root {
   --background: #ffffff;
