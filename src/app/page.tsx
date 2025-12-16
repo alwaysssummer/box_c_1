@@ -10,24 +10,29 @@ import { StatusDashboard, ManageFilterPanel } from '@/components/features/status
 import { OneClickGeneration } from '@/components/features/generation'
 import { PromptList, PromptForm } from '@/components/features/prompt'
 import { DataTypeList, DataTypeForm, type DataTypeItem } from '@/components/features/data-type'
+import { Badge } from '@/components/ui/badge'
 import { 
-  QuestionTypeList, 
   QuestionTypeFormNew, 
   QuestionTypeModeSelector,
+  QuestionTypeGroupManager,
   PromptBasedForm,
   type QuestionTypeItem,
   type QuestionTypeMode,
   type PromptBasedFormData,
 } from '@/components/features/question-type'
+// 새로운 4단계 위자드 시스템
+import { BlockList, BlockForm } from '@/components/features/block'
+import { QuestionTypeList, QuestionTypeForm } from '@/components/features/question-type'
+import type { BlockDefinition, QuestionType, QuestionTypeWithBlocks, StatusGroup, StatusTextbook, Group, Textbook } from '@/types/database'
 import { ActiveTab, SettingMenu, TreeNode, GroupWithTextbooks, TextbookWithUnits, CHOICE_LAYOUTS, CHOICE_MARKERS, type ModelId, SENTENCE_SPLIT_MODELS } from '@/types'
 import type { Prompt } from '@/types/database'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { FolderTree, Settings, Users, Sparkles, Database } from 'lucide-react'
+import { FolderTree, Settings, Users, Sparkles, Database, Layers } from 'lucide-react'
 import { convertToTreeNodes } from '@/lib/tree-utils'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('교재관리')
-  const [settingMenu, setSettingMenu] = useState<SettingMenu>('데이터 유형')
+  const [settingMenu, setSettingMenu] = useState<SettingMenu>('블록 관리')
   
   // 교재관리 서브 모드 (현황, 문장분리) - 원큐 출제 시스템으로 통합
   const [contentMode, setContentMode] = useState<ContentMode>('현황')
@@ -38,12 +43,7 @@ export default function AdminPage() {
   // 문제관리 모드 - 교재 선택 (멀티)
   const [selectedTextbookIdsForManage, setSelectedTextbookIdsForManage] = useState<string[]>([])
   
-  // 문제관리 모드 - 필터 상태
-  const [manageFilterType, setManageFilterType] = useState<'all' | 'dataType' | 'questionType'>('all')
-  const [manageSelectedTypeId, setManageSelectedTypeId] = useState<string>('all')
-  const [manageStatusFilter, setManageStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all')
-  
-  // 문제관리 모드 - 트리에서 선택한 노드 (필터 연동용)
+  // 문제관리 모드 - 트리에서 선택한 노드
   const [selectedManageNode, setSelectedManageNode] = useState<{
     type: 'group' | 'textbook' | 'unit' | 'passage'
     id: string
@@ -51,7 +51,7 @@ export default function AdminPage() {
     textbookId?: string
   } | null>(null)
   
-  // 교재관리 상태
+  // 교재관리 상태 (임시 교재 추가를 위해 유연한 타입 사용)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [groups, setGroups] = useState<any[]>([])
   const [isLoadingGroups, setIsLoadingGroups] = useState(true)
@@ -72,9 +72,9 @@ export default function AdminPage() {
   const [isEditingDataType, setIsEditingDataType] = useState(false)
 
   // 문제 유형 상태
-  const [questionTypes, setQuestionTypes] = useState<QuestionTypeItem[]>([])
+  const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([])
   const [isLoadingQuestionTypes, setIsLoadingQuestionTypes] = useState(true)
-  const [selectedQuestionType, setSelectedQuestionType] = useState<QuestionTypeItem | null>(null)
+  const [selectedQuestionType, setSelectedQuestionType] = useState<QuestionType | null>(null)
   const [isEditingQuestionType, setIsEditingQuestionType] = useState(false)
   const [choiceLayout, setChoiceLayout] = useState('vertical')
   const [choiceMarker, setChoiceMarker] = useState('circle')
@@ -86,9 +86,19 @@ export default function AdminPage() {
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(true)
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null)
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+  const [newPromptIsQuestionType, setNewPromptIsQuestionType] = useState<boolean | null>(null)  // 새 프롬프트 초기 타입
 
   // 현황 배지용 상태
   const [statusInfo, setStatusInfo] = useState<Map<string, { completed: number; total: number }>>(new Map())
+
+  // ============ 새로운 블록 기반 시스템 상태 ============
+  const [blocks, setBlocks] = useState<BlockDefinition[]>([])
+  const [isLoadingBlocks, setIsLoadingBlocks] = useState(true)
+  const [selectedBlock, setSelectedBlock] = useState<BlockDefinition | null>(null)
+  const [isEditingBlock, setIsEditingBlock] = useState(false)
+
+  // 새로운 문제 유형 (4단계 위자드) - 기존 questionTypes 상태 사용
+  const [isEditingQuestionTypeNew, setIsEditingQuestionTypeNew] = useState(false)
 
   // ============ 현황 배지 함수 ============
 
@@ -101,14 +111,12 @@ export default function AdminPage() {
       // hierarchy에서 그룹/교재별 현황 추출
       const newStatusInfo = new Map<string, { completed: number; total: number }>()
       
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data.hierarchy?.forEach((group: any) => {
+      data.hierarchy?.forEach((group: StatusGroup) => {
         newStatusInfo.set(group.id, { 
           completed: group.passageCount, // 문장분리 완료된 것 기준
           total: group.passageCount 
         })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        group.textbooks?.forEach((textbook: any) => {
+        group.textbooks?.forEach((textbook: StatusTextbook) => {
           newStatusInfo.set(textbook.id, { 
             completed: textbook.passageCount,
             total: textbook.passageCount 
@@ -133,14 +141,13 @@ export default function AdminPage() {
       
       if (Array.isArray(data) && data.length > 0) {
         const groupsWithTextbooks = await Promise.all(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.map(async (group: any) => {
+          data.map(async (group: Group) => {
             const textbooksRes = await fetch(`/api/textbooks?groupId=${group.id}`)
             const textbooks = textbooksRes.ok ? await textbooksRes.json() : []
             return { ...group, textbooks }
           })
         )
-        setGroups(groupsWithTextbooks as GroupWithTextbooks[])
+        setGroups(groupsWithTextbooks)
       }
       // Supabase 미연결 시 groups는 빈 배열 유지 (로컬에서 추가 가능)
     } catch (error) {
@@ -360,6 +367,120 @@ export default function AdminPage() {
     setIsEditingPrompt(false)
   }
 
+  // ============ 블록 관리 함수들 (새 시스템) ============
+
+  const fetchBlocks = useCallback(async () => {
+    try {
+      setIsLoadingBlocks(true)
+      const response = await fetch('/api/block-definitions')
+      if (!response.ok) throw new Error('Failed to fetch blocks')
+      const data = await response.json()
+      setBlocks(data)
+    } catch (error) {
+      console.error('Error fetching blocks:', error)
+    } finally {
+      setIsLoadingBlocks(false)
+    }
+  }, [])
+
+  const handleSaveBlock = async (formData: {
+    id: string | null
+    label: string
+    type: 'single' | 'bundle'
+    unit: 'passage' | 'sentence'
+    prompt: string
+    output_fields: { key: string; type: string }[]
+    description: string
+    is_active: boolean
+  }) => {
+    console.log('[page.tsx] handleSaveBlock - sending:', {
+      id: formData.id,
+      label: formData.label,
+      output_fields: formData.output_fields,
+      count: formData.output_fields.length
+    })
+    
+    const url = formData.id ? `/api/block-definitions/${formData.id}` : '/api/block-definitions'
+    const method = formData.id ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    })
+
+    if (!response.ok) throw new Error('Failed to save block')
+    
+    const result = await response.json()
+    console.log('[page.tsx] handleSaveBlock - saved result:', {
+      id: result.id,
+      label: result.label,
+      output_fields: result.output_fields,
+      count: result.output_fields?.length
+    })
+    
+    await fetchBlocks()
+    setSelectedBlock(null)
+    setIsEditingBlock(false)
+  }
+
+  const handleDeleteBlock = async (id: string) => {
+    const response = await fetch(`/api/block-definitions/${id}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) throw new Error('Failed to delete block')
+    
+    await fetchBlocks()
+    if (selectedBlock?.id === id) {
+      setSelectedBlock(null)
+      setIsEditingBlock(false)
+    }
+  }
+
+  // ============ 새 문제 유형 함수들 (4단계 위자드) ============
+  // fetchQuestionTypes를 재사용하므로 별도 함수 불필요
+
+  const handleSaveQuestionTypeNew = async (formData: {
+    name: string
+    output_type: 'question' | 'study_material'
+    question_group: 'csat' | 'school_passage' | 'school_sentence' | 'study'
+    required_block_ids: string[]
+    layout_config: import('@/types/database').LayoutConfig
+    output_config?: import('@/types/output-config').OutputConfig  // 새로운 출력 설정 v2.0
+  }) => {
+    const url = selectedQuestionType 
+      ? `/api/question-types/${selectedQuestionType.id}` 
+      : '/api/question-types'
+    const method = selectedQuestionType ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    })
+
+    if (!response.ok) throw new Error('Failed to save question type')
+    
+    await fetchQuestionTypes()
+    setSelectedQuestionType(null)
+    setIsEditingQuestionTypeNew(false)
+  }
+
+  const handleDeleteQuestionTypeNew = async (id: string) => {
+    const response = await fetch(`/api/question-types/${id}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) throw new Error('Failed to delete question type')
+    
+    await fetchQuestionTypes()
+    if (selectedQuestionType?.id === id) {
+      setSelectedQuestionType(null)
+      setIsEditingQuestionTypeNew(false)
+    }
+  }
+
   // ============ 초기 로드 ============
 
   useEffect(() => {
@@ -367,7 +488,9 @@ export default function AdminPage() {
     fetchDataTypes()
     fetchQuestionTypes()
     fetchPrompts()
-  }, [fetchGroups, fetchDataTypes, fetchQuestionTypes, fetchPrompts])
+    fetchBlocks()
+    // fetchQuestionTypesNew는 fetchQuestionTypes와 동일한 데이터를 가져오므로 제거
+  }, [fetchGroups, fetchDataTypes, fetchQuestionTypes, fetchPrompts, fetchBlocks])
 
   // 현황 모드일 때 현황 데이터 로드
   useEffect(() => {
@@ -832,6 +955,29 @@ export default function AdminPage() {
               </button>
             </div>
 
+            {/* 전체 선택/해제 버튼 (문제관리 모드) */}
+            {contentMode === '문제관리' && groups.length > 0 && (
+              <div className="mb-2 px-2">
+                <button
+                  onClick={() => {
+                    const allTextbookIds = groups.flatMap((g: { textbooks?: { id: string }[] }) => 
+                      g.textbooks?.map(t => t.id) || []
+                    )
+                    if (selectedTextbookIdsForManage.length === allTextbookIds.length) {
+                      setSelectedTextbookIdsForManage([])
+                    } else {
+                      setSelectedTextbookIdsForManage(allTextbookIds)
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs font-medium bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-md flex items-center justify-center gap-2 transition-colors"
+                >
+                  {selectedTextbookIdsForManage.length === groups.flatMap((g: { textbooks?: { id: string }[] }) => g.textbooks?.map(t => t.id) || []).length 
+                    ? '✓ 전체 해제' 
+                    : '☐ 전체 선택'}
+                </button>
+              </div>
+            )}
+
             {/* 트리 */}
             {isLoadingGroups ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
@@ -888,9 +1034,11 @@ export default function AdminPage() {
                       setSelectedPassageIdsForGenerate(prev => {
                         const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
                         if (allSelected) {
+                          // 전체 선택됨 → 해제
                           return prev.filter(id => !passageIds.includes(id))
                         } else {
-                          return [...new Set([...prev, ...passageIds])]
+                          // 새 유닛 선택 → 해당 유닛의 지문으로 대체 (다른 교재 지문 제거)
+                          return passageIds
                         }
                       })
                     }
@@ -900,9 +1048,11 @@ export default function AdminPage() {
                       setSelectedPassageIdsForGenerate(prev => {
                         const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
                         if (allSelected) {
+                          // 전체 선택됨 → 해제
                           return prev.filter(id => !passageIds.includes(id))
                         } else {
-                          return [...new Set([...prev, ...passageIds])]
+                          // 새 교재 선택 → 해당 교재의 지문으로 대체
+                          return passageIds
                         }
                       })
                     }
@@ -912,9 +1062,11 @@ export default function AdminPage() {
                       setSelectedPassageIdsForGenerate(prev => {
                         const allSelected = passageIds.length > 0 && passageIds.every(id => prev.includes(id))
                         if (allSelected) {
+                          // 전체 선택됨 → 해제
                           return prev.filter(id => !passageIds.includes(id))
                         } else {
-                          return [...new Set([...prev, ...passageIds])]
+                          // 새 그룹 선택 → 해당 그룹의 지문으로 대체
+                          return passageIds
                         }
                       })
                     }
@@ -954,18 +1106,22 @@ export default function AdminPage() {
 
         {/* 교재관리 - 문제출제 모드 (원큐 시스템) */}
         {activeTab === '교재관리' && contentMode === '문제출제' && (
-          <OneClickGeneration selectedPassageIds={selectedPassageIdsForGenerate} />
+          <OneClickGeneration 
+            selectedPassageIds={selectedPassageIdsForGenerate}
+            onComplete={() => {
+              // ⭐ 등록 완료 시 문제관리 탭으로 자동 전환
+              setContentMode('문제관리')
+            }}
+          />
         )}
 
         {/* 교재관리 - 문제관리 모드 */}
         {activeTab === '교재관리' && contentMode === '문제관리' && (
-          <StatusDashboard 
-            mode="manage" 
-            selectedNode={selectedManageNode} 
+          <StatusDashboard
+            mode="manage"
+            selectedNode={selectedManageNode}
             selectedTextbookIds={selectedTextbookIdsForManage}
-            filterType={manageFilterType}
-            selectedTypeId={manageSelectedTypeId}
-            statusFilter={manageStatusFilter}
+            onTextbookSelectionChange={setSelectedTextbookIdsForManage}
           />
         )}
 
@@ -1057,17 +1213,82 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* 설정 - 블록 관리 (새 시스템) */}
+        {activeTab === '설정' && settingMenu === '블록 관리' && (isEditingBlock || selectedBlock) && (
+          <BlockForm
+            block={selectedBlock}
+            isEditing={isEditingBlock}
+            onSave={handleSaveBlock}
+            onDelete={async () => {
+              if (selectedBlock) await handleDeleteBlock(selectedBlock.id)
+            }}
+            onEdit={() => setIsEditingBlock(true)}
+            onCancel={() => {
+              setIsEditingBlock(false)
+              if (!selectedBlock) setSelectedBlock(null)
+            }}
+          />
+        )}
+        {activeTab === '설정' && settingMenu === '블록 관리' && !isEditingBlock && !selectedBlock && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <Layers className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
+              <p className="text-muted-foreground">우측에서 블록을 선택하거나 새로 추가하세요</p>
+            </div>
+          </div>
+        )}
+
+        {/* 설정 - 문제 유형 (4단계 위자드) */}
+        {activeTab === '설정' && settingMenu === '문제 유형' && isEditingQuestionTypeNew && (
+          <QuestionTypeForm
+            initialData={selectedQuestionType ? {
+              id: selectedQuestionType.id,
+              name: selectedQuestionType.name,
+              output_type: selectedQuestionType.output_type || 'question',
+              question_group: selectedQuestionType.question_group || 'csat',
+              required_block_ids: selectedQuestionType.required_block_ids || [],
+              layout_config: selectedQuestionType.layout_config,
+              output_config: selectedQuestionType.output_config,
+            } : undefined}
+            onSave={handleSaveQuestionTypeNew}
+            onCancel={() => {
+              setIsEditingQuestionTypeNew(false)
+              setSelectedQuestionType(null)
+            }}
+          />
+        )}
+        {activeTab === '설정' && settingMenu === '문제 유형' && !isEditingQuestionTypeNew && (
+          <QuestionTypeList
+            questionTypes={questionTypes as QuestionTypeWithBlocks[]}
+            isLoading={isLoadingQuestionTypes}
+            onAdd={() => {
+              setSelectedQuestionType(null)
+              setIsEditingQuestionTypeNew(true)
+            }}
+            onEdit={(id) => {
+              const qt = questionTypes.find(q => q.id === id)
+              if (qt) {
+                setSelectedQuestionType(qt)
+                setIsEditingQuestionTypeNew(true)
+              }
+            }}
+            onDelete={handleDeleteQuestionTypeNew}
+          />
+        )}
+
         {/* 설정 - 프롬프트 */}
         {activeTab === '설정' && settingMenu === '프롬프트' && (isEditingPrompt || selectedPrompt) && (
           <PromptForm
             prompt={selectedPrompt}
             isEditing={isEditingPrompt}
+            initialIsQuestionType={newPromptIsQuestionType}
             onSave={handleSavePrompt}
             onDelete={handleDeletePrompt}
             onEdit={() => setIsEditingPrompt(true)}
             onCancel={() => {
               setIsEditingPrompt(false)
               if (!selectedPrompt) setSelectedPrompt(null)
+              setNewPromptIsQuestionType(null)
             }}
           />
         )}
@@ -1155,7 +1376,7 @@ export default function AdminPage() {
             allDataTypes={dataTypes}
             allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
             isEditing={true}
-            onSave={handleSaveQuestionType}
+            onSave={handleSaveQuestionType as (data: unknown) => Promise<void>}
             onDelete={async () => {}}
             onEdit={() => {}}
             onCancel={() => setQuestionTypeAddMode(null)}
@@ -1217,7 +1438,7 @@ export default function AdminPage() {
               allDataTypes={dataTypes}
               allPrompts={prompts.map(p => ({ id: p.id, name: p.name, category: p.category }))}
               isEditing={isEditingQuestionType}
-              onSave={handleSaveQuestionType}
+              onSave={handleSaveQuestionType as (data: unknown) => Promise<void>}
               onDelete={handleDeleteQuestionType}
               onEdit={() => setIsEditingQuestionType(true)}
               onCancel={() => {
@@ -1251,15 +1472,35 @@ export default function AdminPage() {
             ? '📝 문장 분리'
             : activeTab === '교재관리' && contentMode === '문제관리'
               ? '📋 상세 정보'
+              : activeTab === '설정' && settingMenu === '블록 관리'
+                ? '블록 목록'
+              : activeTab === '설정' && settingMenu === '문제 유형'
+                ? '문제 유형'
               : activeTab === '설정' && settingMenu === '프롬프트'
                 ? '프롬프트 목록'
               : activeTab === '설정' && settingMenu === '데이터 유형'
                 ? '데이터 유형 목록'
-                : activeTab === '설정' && settingMenu === '문제 유형'
-                  ? '문제 유형 목록'
                   : '확장 기능'
         }
       >
+        {/* 설정 - 블록 관리 목록 */}
+        {activeTab === '설정' && settingMenu === '블록 관리' && (
+          <BlockList
+            blocks={blocks}
+            isLoading={isLoadingBlocks}
+            selectedId={selectedBlock?.id || null}
+            onSelect={(block) => {
+              setSelectedBlock(block)
+              setIsEditingBlock(false)
+            }}
+            onAdd={() => {
+              setSelectedBlock(null)
+              setIsEditingBlock(true)
+            }}
+            onDelete={handleDeleteBlock}
+          />
+        )}
+
         {/* 설정 - 프롬프트 목록 */}
         {activeTab === '설정' && settingMenu === '프롬프트' && (
           <PromptList
@@ -1268,10 +1509,17 @@ export default function AdminPage() {
             onSelectPrompt={(prompt) => {
               setSelectedPrompt(prompt)
               setIsEditingPrompt(false)
+              setNewPromptIsQuestionType(null)
             }}
-            onAddNew={() => {
+            onAddOneClick={() => {
               setSelectedPrompt(null)
               setIsEditingPrompt(true)
+              setNewPromptIsQuestionType(true)  // 원큐용
+            }}
+            onAddSlot={() => {
+              setSelectedPrompt(null)
+              setIsEditingPrompt(true)
+              setNewPromptIsQuestionType(false)  // 슬롯용
             }}
             isLoading={isLoadingPrompts}
           />
@@ -1294,86 +1542,45 @@ export default function AdminPage() {
           />
         )}
 
-        {/* 설정 - 문제 유형 목록 */}
+        {/* 설정 - 문제 유형 (새 4단계 위자드 - RightPanel은 간소화) */}
         {activeTab === '설정' && settingMenu === '문제 유형' && (
-          <div className="space-y-4">
-            <QuestionTypeList
-              questionTypes={questionTypes}
-              isLoading={isLoadingQuestionTypes}
-              selectedId={selectedQuestionType?.id || null}
-              onSelect={(qt) => {
-                setSelectedQuestionType(qt)
-                setIsEditingQuestionType(false)
-                setChoiceLayout(qt.choice_layout)
-                setChoiceMarker(qt.choice_marker)
-              }}
-              onAdd={() => {
-                setSelectedQuestionType(null)
-                setIsEditingQuestionType(false)
-                setQuestionTypeAddMode('select')  // 입구 선택 화면으로
-                setChoiceLayout('vertical')
-                setChoiceMarker('circle')
-              }}
-            />
-
-            {/* 레이아웃 옵션 (선택된 문제 유형이 있을 때만) */}
-            {(isEditingQuestionType || selectedQuestionType) && (
-              <div className="border-t border-border pt-4 space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">선택지 배열</label>
-                  <RadioGroup value={choiceLayout} onValueChange={setChoiceLayout} disabled={!isEditingQuestionType}>
-                    {CHOICE_LAYOUTS.map((opt) => (
-                      <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
-                        <RadioGroupItem value={opt.value} id={`layout-${opt.value}`} />
-                        <label htmlFor={`layout-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">선택지 번호</label>
-                  <RadioGroup value={choiceMarker} onValueChange={setChoiceMarker} disabled={!isEditingQuestionType}>
-                    {CHOICE_MARKERS.map((opt) => (
-                      <div key={opt.value} className="flex items-center gap-2 p-2 border border-border rounded-md">
-                        <RadioGroupItem value={opt.value} id={`marker-${opt.value}`} />
-                        <label htmlFor={`marker-${opt.value}`} className="text-sm cursor-pointer">{opt.label}</label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                <div className="border-t border-border pt-4">
-                  <label className="text-sm font-medium text-foreground mb-2 block">출력물 구성</label>
-                  <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
-                    <p>📄 문제지.pdf (문제만)</p>
-                    <p>📄 정답지.pdf (정답만)</p>
-                    <p>📄 해설지.pdf (정답+해설)</p>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="p-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              좌측에서 문제 유형 목록을 확인하고 관리할 수 있습니다.
+            </p>
+            <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded-md">
+              <p className="font-medium mb-2">출력물 구성</p>
+              <p>📄 학생용 (문제지)</p>
+              <p>📄 정답용 (정답지)</p>
+              <p>📄 교사용 (해설지)</p>
+            </div>
           </div>
         )}
 
         {/* 교재관리 - 문장 분리 패널 */}
         {isSheetImportMode && <SplitDetailPanel />}
 
-        {/* 교재관리 - 문제관리 모드: 필터 조건 */}
+        {/* 교재관리 - 문제관리 모드: 선택 항목 요약 */}
         {activeTab === '교재관리' && contentMode === '문제관리' && (
-          <ManageFilterPanel
-            filterType={manageFilterType}
-            selectedTypeId={manageSelectedTypeId}
-            statusFilter={manageStatusFilter}
-            onFilterTypeChange={setManageFilterType}
-            onSelectedTypeIdChange={setManageSelectedTypeId}
-            onStatusFilterChange={setManageStatusFilter}
-            onReset={() => {
-              setManageFilterType('all')
-              setManageSelectedTypeId('all')
-              setManageStatusFilter('all')
-            }}
-          />
+          <div className="p-4 space-y-4">
+            <div>
+              <h4 className="font-medium text-sm mb-3">선택된 교재</h4>
+              {selectedTextbookIdsForManage.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  좌측 트리에서 교재를 선택해주세요
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <Badge variant="secondary" className="text-xs">
+                    📚 {selectedTextbookIdsForManage.length}개 교재 선택
+                  </Badge>
+                  <p className="text-xs text-muted-foreground">
+                    필터는 중앙 패널에서 조정할 수 있습니다
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* 기본 메시지 */}

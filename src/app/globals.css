@@ -136,49 +136,42 @@ body {
    출력 밀도 옵션 (Density Options)
    ============================================ */
 
-/* 기본 밀도 */
+/* 기본 밀도 - 템플릿 기본값(9pt)과 일치 */
 .density-normal {
-  --print-font-size: 11pt;
-  --print-line-height: 1.5;
-  --print-spacing: 1.5rem;
-  --print-padding: 2rem;
-}
-
-/* 빽빽하게 */
-.density-compact {
-  --print-font-size: 10pt;
-  --print-line-height: 1.3;
+  --print-font-size: 9pt;
+  --print-line-height: 1.6;
   --print-spacing: 1rem;
   --print-padding: 1.5rem;
 }
 
-/* 여유있게 */
-.density-spacious {
-  --print-font-size: 12pt;
-  --print-line-height: 1.7;
-  --print-spacing: 2rem;
-  --print-padding: 2.5rem;
+/* 빽빽하게 */
+.density-compact {
+  --print-font-size: 8pt;
+  --print-line-height: 1.4;
+  --print-spacing: 0.75rem;
+  --print-padding: 1rem;
 }
 
-/* 밀도 적용 - 전체 영역에 적용 */
+/* 여유있게 */
+.density-spacious {
+  --print-font-size: 10pt;
+  --print-line-height: 1.8;
+  --print-spacing: 1.5rem;
+  --print-padding: 2rem;
+}
+
+/* 밀도 적용 - CSS 변수만 설정, 실제 적용은 템플릿 또는 하위 요소에서 */
 .density-normal,
 .density-compact,
 .density-spacious {
-  font-size: var(--print-font-size);
-  line-height: var(--print-line-height);
+  /* font-size는 OutputContainer의 인라인 스타일(템플릿 설정)이 우선 */
+  /* 템플릿 설정이 없는 경우에만 밀도 옵션 적용 */
 }
 
-/* A4 페이지 내부 콘텐츠에 밀도 적용 */
-.density-normal .a4-page,
-.density-compact .a4-page,
-.density-spacious .a4-page {
-  font-size: var(--print-font-size);
-  line-height: var(--print-line-height);
-}
-
-.density-normal .a4-page-content,
-.density-compact .a4-page-content,
-.density-spacious .a4-page-content {
+/* 템플릿 설정이 없을 때만 밀도 옵션 적용 (output-container가 없는 경우) */
+.density-normal > *:not(.output-container),
+.density-compact > *:not(.output-container),
+.density-spacious > *:not(.output-container) {
   font-size: var(--print-font-size);
   line-height: var(--print-line-height);
 }
@@ -204,17 +197,17 @@ body {
    A4 페이지 스타일 (Page Preview)
    ============================================ */
 
-/* A4 페이지 컨테이너 */
+/* A4 페이지 컨테이너 - 내용에 따라 자연스럽게 확장 */
 .a4-page {
   width: 210mm;
   min-height: 297mm;
-  max-height: 297mm;
+  height: auto; /* 내용에 따라 자동 확장 */
   padding: 15mm 20mm;
   margin: 16px auto;
   background: white;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* 내용이 자연스럽게 표시 */
   box-sizing: border-box;
 }
 
@@ -228,22 +221,79 @@ body {
   color: #999;
 }
 
-/* 페이지 구분 표시 (화면용) */
+/* 페이지 구분선 (화면용) */
 .a4-page::after {
-  content: '─ ─ ─ 페이지 끝 ─ ─ ─';
+  content: '';
   position: absolute;
-  bottom: 2mm;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 8pt;
-  color: #ccc;
-  white-space: nowrap;
+  width: 80%;
+  border-bottom: 1px dashed #ddd;
 }
 
-/* A4 페이지 내부 콘텐츠 */
+/* A4 페이지 내부 콘텐츠 - 2단 레이아웃 지원 */
 .a4-page-content {
-  height: 100%;
+  min-height: calc(297mm - 30mm); /* 최소 높이 설정하여 column-count 작동 보장 */
+  height: auto; /* 내용에 따라 자동 확장 */
+  overflow: visible; /* 내용이 자연스럽게 표시 */
+}
+
+/* CSS column-count 기반 2단 레이아웃 - 좌→우→다음페이지 자연 흐름 */
+.columns-2-flow {
+  column-count: 2;
+  column-gap: 24px;
+  column-fill: auto;
+}
+
+/* 지문+문제 그룹 블록 */
+.passage-question-group {
+  break-inside: avoid-column;
+  page-break-inside: avoid;
+}
+
+/* 개별 문제 항목 */
+.question-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* 지문 본문 */
+.passage-body {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ============================================
+   인쇄 미리보기 모드 (Print Preview Mode)
+   화면에서도 인쇄와 100% 동일한 레이아웃 적용
+   ============================================ */
+
+/* 미리보기 모드 - 인쇄와 동일한 A4 페이지 스타일 */
+.print-preview-mode .a4-page {
+  width: 210mm;
+  height: 297mm;
+  padding: 15mm 20mm;
+  margin: 16px auto;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   overflow: hidden;
+  box-sizing: border-box;
+  break-after: auto;
+}
+
+/* 미리보기 모드 - 콘텐츠 영역 */
+.print-preview-mode .a4-page-content {
+  height: calc(297mm - 30mm);
+  overflow: hidden;
+}
+
+/* 미리보기 모드 - 2단 레이아웃은 JS flexbox로 처리 */
+
+/* 미리보기 모드 - 폰트/줄간격 */
+.print-preview-mode .output-container {
+  font-size: var(--template-font-base, 9pt);
+  line-height: var(--template-line-height, 1.6);
 }
 
 /* ============================================
@@ -255,10 +305,10 @@ body {
     display: none !important;
   }
   
-  /* 페이지 설정 */
+  /* 페이지 설정 - A4 사이즈, 여백 설정 */
   @page {
     size: A4;
-    margin: 15mm 20mm;
+    margin: 15mm 20mm; /* 인쇄 시 여백 */
   }
   
   /* 기본 스타일 초기화 */
@@ -267,29 +317,69 @@ body {
     color: black !important;
   }
   
-  /* 밀도 옵션 적용 */
-  .density-normal,
-  .density-compact,
-  .density-spacious {
-    font-size: var(--print-font-size) !important;
-    line-height: var(--print-line-height) !important;
+  /* 밀도 옵션 적용 - 템플릿 설정이 없을 때만 적용 */
+  /* OutputContainer의 인라인 스타일이 우선 */
+  .density-normal > *:not(.output-container),
+  .density-compact > *:not(.output-container),
+  .density-spacious > *:not(.output-container) {
+    font-size: var(--print-font-size);
+    line-height: var(--print-line-height);
   }
   
-  /* A4 페이지 인쇄 스타일 */
+  /* A4 페이지 인쇄 스타일 - 자연스러운 페이지 분할 */
   .a4-page {
-    width: 100% !important;
-    min-height: auto !important;
-    max-height: none !important;
-    padding: 0 !important;
+    width: 210mm !important;
+    height: auto !important; /* 내용에 따라 자동 확장 */
+    padding: 15mm 20mm !important;
     margin: 0 !important;
     box-shadow: none !important;
-    page-break-after: always;
-    break-after: page;
+    overflow: visible !important; /* 내용이 자연스럽게 흐름 */
+    box-sizing: border-box !important;
   }
   
-  .a4-page:last-child {
-    page-break-after: auto;
-    break-after: auto;
+  /* 인쇄 시 콘텐츠 영역 - 자연스러운 페이지 분할 */
+  .a4-page-content {
+    height: auto !important; /* 내용에 따라 자동 확장 */
+    overflow: visible !important; /* 내용이 자연스럽게 흐름 */
+  }
+  
+  /* CSS column-count 기반 2단 레이아웃 - 좌→우→다음페이지 자연 흐름 */
+  .columns-2-flow {
+    column-count: 2 !important;
+    column-gap: 24px !important;
+    column-fill: auto !important;
+  }
+  
+  /* 폰트/줄간격 - 템플릿 설정 적용 */
+  .a4-page {
+    font-size: var(--template-font-base, 9pt) !important;
+    line-height: var(--template-line-height, 1.6) !important;
+  }
+  
+  /* ========== 지문+문제 그룹 페이지 나눔 ========== */
+  /* 지문+문제 그룹은 가능하면 같이 유지 */
+  .passage-question-group {
+    break-inside: avoid-column !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* 개별 문제는 끊기지 않음 */
+  .question-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* 지문 본문은 끊기지 않음 */
+  .passage-body {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* 전체 문제 블록은 자유 흐름 허용 */
+  .print-question,
+  .output-block {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
   }
   
   .a4-page::before,

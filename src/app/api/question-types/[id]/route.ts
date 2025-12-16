@@ -1,88 +1,99 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-interface RouteParams {
-  params: Promise<{ id: string }>
-}
-
-// GET /api/question-types/[id] - 특정 문제 유형 조회
-export async function GET(request: NextRequest, { params }: RouteParams) {
+// GET: 단일 문제 유형 조회
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params
     const supabase = await createClient()
     
     const { data, error } = await supabase
       .from('question_types')
-      .select(`
-        *,
-        question_type_items (
-          *,
-          data_types (id, name, target, has_answer)
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .single()
     
-    if (error) throw error
+    if (error) {
+      console.error('Error fetching question type:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     
     if (!data) {
-      return NextResponse.json(
-        { error: 'Question type not found' },
-        { status: 404 }
+      return NextResponse.json({ error: 'Question type not found' }, { status: 404 })
+    }
+    
+    // 디버깅: 로드된 데이터 확인
+    if (data.output_config?.fields) {
+      console.log('[API GET] output_config.fields:', 
+        data.output_config.fields.slice(0, 2).map((f: { key: string; showIn?: string[] }) => 
+          `${f.key}: showIn=${JSON.stringify(f.showIn)}`
+        )
       )
     }
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const responseData = data as Record<string, any>
-    return NextResponse.json({
-      ...responseData,
-      dataTypeList: responseData.question_type_items
-        ?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index)
-        .map((item: { id: string; data_types: { id: string; name: string }; role: string }) => ({
-          id: item.id,
-          dataTypeId: item.data_types.id,
-          dataTypeName: item.data_types.name,
-          role: item.role
-        })) || []
-    })
+    // 블록 정의 정보 추가
+    if (data.required_block_ids && data.required_block_ids.length > 0) {
+      const { data: blocks } = await supabase
+        .from('block_definitions')
+        .select('*')
+        .in('id', data.required_block_ids)
+      
+      return NextResponse.json({ ...data, blocks: blocks || [] })
+    }
+    
+    return NextResponse.json({ ...data, blocks: [] })
   } catch (error) {
-    console.error('Error fetching question type:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch question type' },
-      { status: 500 }
-    )
+    console.error('Error in GET /api/question-types/[id]:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// PATCH /api/question-types/[id] - 문제 유형 수정
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+// PUT: 문제 유형 수정
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params
     const supabase = await createClient()
     const body = await request.json()
     
-    // 문제 유형(출력 유형) 업데이트 (스네이크/카멜 케이스 모두 지원)
+    const {
+      name,
+      output_type,
+      description,
+      question_group,
+      required_block_ids,
+      layout_config,
+      output_config,  // 새로운 출력 설정 v2.0
+      instruction,
+      choice_layout,
+      choice_marker,
+    } = body
+    
+    // 업데이트할 필드만 포함
     const updateData: Record<string, unknown> = {}
-    if (body.name !== undefined) updateData.name = body.name
-    if (body.description !== undefined) updateData.description = body.description
-    if (body.instruction !== undefined) updateData.instruction = body.instruction
-    if (body.purpose !== undefined) updateData.purpose = body.purpose
-    if (body.passageTransform !== undefined) updateData.passage_transform = body.passageTransform
-    if (body.outputConfig !== undefined) updateData.output_config = body.outputConfig
-    if (body.extendsFrom !== undefined) updateData.extends_from = body.extendsFrom
-    // 스네이크/카멜 케이스 모두 지원
-    if (body.choice_layout !== undefined || body.choiceLayout !== undefined) {
-      updateData.choice_layout = body.choice_layout || body.choiceLayout
-    }
-    if (body.choice_marker !== undefined || body.choiceMarker !== undefined) {
-      updateData.choice_marker = body.choice_marker || body.choiceMarker
-    }
-    // 출제 방식 관련 필드 (스네이크/카멜 케이스 모두 지원)
-    if (body.prompt_id !== undefined || body.promptId !== undefined) {
-      updateData.prompt_id = body.prompt_id || body.promptId
-    }
-    if (body.question_group !== undefined || body.group !== undefined) {
-      updateData.question_group = body.question_group || body.group
+    if (name !== undefined) updateData.name = name
+    if (output_type !== undefined) updateData.output_type = output_type
+    if (description !== undefined) updateData.description = description
+    if (question_group !== undefined) updateData.question_group = question_group
+    if (required_block_ids !== undefined) updateData.required_block_ids = required_block_ids
+    if (layout_config !== undefined) updateData.layout_config = layout_config
+    if (output_config !== undefined) updateData.output_config = output_config  // 새로운 출력 설정 저장
+    if (instruction !== undefined) updateData.instruction = instruction
+    if (choice_layout !== undefined) updateData.choice_layout = choice_layout
+    if (choice_marker !== undefined) updateData.choice_marker = choice_marker
+    
+    // 디버깅 로그
+    if (output_config?.fields) {
+      console.log('[API PUT] Saving output_config.fields:', 
+        output_config.fields.slice(0, 2).map((f: { key: string; showIn?: string[] }) => 
+          `${f.key}: showIn=${JSON.stringify(f.showIn)}`
+        )
+      )
     }
     
     const { data, error } = await supabase
@@ -92,51 +103,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .select()
       .single()
     
-    if (error) throw error
-    
-    // 데이터 유형 항목 업데이트
-    if (body.dataTypeList !== undefined) {
-      // 기존 항목 삭제
-      await supabase
-        .from('question_type_items')
-        .delete()
-        .eq('question_type_id', id)
-      
-      // 새 항목 추가
-      if (body.dataTypeList.length > 0) {
-        const items = body.dataTypeList.map((item: { dataTypeId: string; role: string; config?: object; required?: boolean }, idx: number) => ({
-          question_type_id: id,
-          data_type_id: item.dataTypeId,
-          role: item.role || 'body',
-          order_index: idx,
-          config: item.config || {},
-          required: item.required !== false
-        }))
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any)
-          .from('question_type_items')
-          .insert(items)
-      }
+    if (error) {
+      console.error('Error updating question type:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateResponseData = data as Record<string, any>
-    return NextResponse.json({
-      ...updateResponseData,
-      dataTypeList: body.dataTypeList || []
-    })
+    // 저장 후 데이터 확인
+    if (data.output_config?.fields) {
+      console.log('[API PUT] Saved output_config.fields:', 
+        data.output_config.fields.slice(0, 2).map((f: { key: string; showIn?: string[] }) => 
+          `${f.key}: showIn=${JSON.stringify(f.showIn)}`
+        )
+      )
+    }
+    
+    return NextResponse.json(data)
   } catch (error) {
-    console.error('Error updating question type:', error)
-    return NextResponse.json(
-      { error: 'Failed to update question type' },
-      { status: 500 }
-    )
+    console.error('Error in PUT /api/question-types/[id]:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// DELETE /api/question-types/[id] - 문제 유형 삭제
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+// DELETE: 문제 유형 삭제
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params
     const supabase = await createClient()
@@ -146,15 +138,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       .delete()
       .eq('id', id)
     
-    if (error) throw error
+    if (error) {
+      console.error('Error deleting question type:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting question type:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete question type' },
-      { status: 500 }
-    )
+    console.error('Error in DELETE /api/question-types/[id]:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+
+
+
 

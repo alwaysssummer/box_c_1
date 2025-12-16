@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabasePassageResult = any  // Supabase 쿼리 결과 - 동적 타입
+
 // GET /api/passages - 모든 지문 조회 (그룹/교재/단원 정보 포함)
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +14,51 @@ export async function GET(request: NextRequest) {
     const groupId = searchParams.get('groupId')
     const textbookId = searchParams.get('textbookId')
     const unitId = searchParams.get('unitId')
+    const limit = searchParams.get('limit')
+    const ids = searchParams.get('ids') // 콤마로 구분된 ID 목록
+    
+    // IDs로 조회하는 경우 (선택된 지문 정보 가져오기)
+    if (ids) {
+      const idList = ids.split(',').filter(id => id.trim())
+      if (idList.length === 0) {
+        return NextResponse.json([])
+      }
+      
+      const { data, error } = await supabase
+        .from('passages')
+        .select(`
+          id,
+          name,
+          content,
+          order_index,
+          units (
+            id,
+            name,
+            textbooks (
+              id,
+              name
+            )
+          )
+        `)
+        .in('id', idList)
+      
+      if (error) throw error
+      
+      // ID 순서 유지하면서 반환
+      const passageMap = new Map((data as SupabasePassageResult[])?.map((p: SupabasePassageResult) => [p.id, p]) || [])
+      const orderedData = idList
+        .map(id => passageMap.get(id))
+        .filter((p): p is SupabasePassageResult => Boolean(p))
+        .map((p: SupabasePassageResult) => ({
+          id: p.id,
+          name: p.name,
+          content: p.content,
+          textbook: p.units?.textbooks?.name,
+          unit: p.units?.name,
+        }))
+      
+      return NextResponse.json(orderedData)
+    }
     
     let query = supabase
       .from('passages')
@@ -35,7 +83,12 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .order('order_index', { ascending: true })
+      .order('created_at', { ascending: false })
+    
+    // Limit 적용
+    if (limit) {
+      query = query.limit(parseInt(limit))
+    }
     
     // 단원 ID로 필터
     if (unitId) {
@@ -68,6 +121,9 @@ export async function GET(request: NextRequest) {
       name: passage.name,
       content: passage.content,
       orderIndex: passage.order_index,
+      // 테스트 패널용 추가 필드
+      textbook_name: passage.units?.textbooks?.name || null,
+      unit_name: passage.units?.name || null,
       unit: passage.units ? {
         id: passage.units.id,
         name: passage.units.name,

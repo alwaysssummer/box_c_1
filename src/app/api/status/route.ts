@@ -1,6 +1,54 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// 내부 타입 정의 (Supabase 쿼리 응답용)
+interface PassageRow {
+  id: string
+  name: string
+  order_index: number
+  sentence_split_status: string | null
+  sentence_count: number | null
+}
+
+interface UnitRow {
+  id: string
+  name: string
+  order_index: number
+  passages: PassageRow[]
+}
+
+interface TextbookRow {
+  id: string
+  name: string
+  order_index: number
+  units: UnitRow[]
+}
+
+interface GroupRow {
+  id: string
+  name: string
+  order_index: number
+  textbooks: TextbookRow[]
+}
+
+// 출력 타입 (reduce 연산용)
+interface OutputUnit {
+  id: string
+  name: string
+  orderIndex: number
+  passageCount: number
+  passages: unknown[]
+}
+
+interface OutputTextbook {
+  id: string
+  name: string
+  orderIndex: number
+  unitCount: number
+  passageCount: number
+  units: OutputUnit[]
+}
+
 // GET /api/status - 전체 현황 조회
 export async function GET() {
   try {
@@ -62,6 +110,14 @@ export async function GET() {
       .select('passage_id, question_type_id, status')
 
     if (generatedQuestionsError) throw generatedQuestionsError
+    
+    // ⭐ 디버깅 로그
+    console.log('[API /status] 📝 Generated questions from DB:', {
+      count: generatedQuestions?.length || 0,
+      samples: generatedQuestions?.slice(0, 3),
+      uniquePassages: new Set(generatedQuestions?.map(q => q.passage_id) || []).size,
+      uniqueTypes: new Set(generatedQuestions?.map(q => q.question_type_id) || []).size,
+    })
 
     // 4. 통계 계산
     let totalGroups = 0
@@ -89,24 +145,30 @@ export async function GET() {
       }
       generatedQuestionsByPassage[item.passage_id][item.question_type_id] = item.status
     })
+    
+    // ⭐ 디버깅 로그
+    console.log('[API /status] 📦 Grouped questions by passage:', {
+      totalPassages: Object.keys(generatedQuestionsByPassage).length,
+      sample: Object.entries(generatedQuestionsByPassage)[0],
+    })
 
     // 계층 구조 데이터 생성
-    const hierarchyData = groups?.map(group => {
+    const hierarchyData = (groups as GroupRow[] | null)?.map(group => {
       totalGroups++
       
       const textbooksData = group.textbooks
-        ?.sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-        .map((textbook: any) => {
+        ?.sort((a: TextbookRow, b: TextbookRow) => (a.order_index ?? 0) - (b.order_index ?? 0))
+        .map((textbook: TextbookRow) => {
           totalTextbooks++
           
           const unitsData = textbook.units
-            ?.sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-            .map((unit: any) => {
+            ?.sort((a: UnitRow, b: UnitRow) => (a.order_index ?? 0) - (b.order_index ?? 0))
+            .map((unit: UnitRow) => {
               totalUnits++
               
               const passagesData = unit.passages
-                ?.sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-                .map((passage: any) => {
+                ?.sort((a: PassageRow, b: PassageRow) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                .map((passage: PassageRow) => {
                   totalPassages++
                   
                   // 문장 분리 상태 카운트
@@ -143,7 +205,7 @@ export async function GET() {
             name: textbook.name,
             orderIndex: textbook.order_index,
             unitCount: unitsData.length,
-            passageCount: unitsData.reduce((sum: number, u: any) => sum + u.passageCount, 0),
+            passageCount: unitsData.reduce((sum: number, u: OutputUnit) => sum + u.passageCount, 0),
             units: unitsData,
           }
         }) || []
@@ -153,7 +215,7 @@ export async function GET() {
         name: group.name,
         orderIndex: group.order_index,
         textbookCount: textbooksData.length,
-        passageCount: textbooksData.reduce((sum: number, t: any) => sum + t.passageCount, 0),
+        passageCount: textbooksData.reduce((sum: number, t: OutputTextbook) => sum + t.passageCount, 0),
         textbooks: textbooksData,
       }
     }) || []

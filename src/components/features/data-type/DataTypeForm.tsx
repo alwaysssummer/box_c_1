@@ -349,7 +349,9 @@ export function DataTypeForm({
                         promptId: prompt.id,
                         prompt: prompt.content,
                         target: prompt.target,
-                        outputSchema: prompt.output_schema || '',
+                        outputSchema: typeof prompt.output_schema === 'string' 
+                          ? prompt.output_schema 
+                          : JSON.stringify(prompt.output_schema || '', null, 2),
                         sampleResult: prompt.sample_output || '',
                         variables: prompt.variables || [],
                       }))
@@ -414,7 +416,9 @@ export function DataTypeForm({
                       <div>
                         <label className="text-xs text-muted-foreground">출력 스키마:</label>
                         <pre className="text-xs font-mono bg-slate-100 p-2 rounded mt-1 overflow-auto max-h-20">
-                          {selectedPromptForForm.output_schema}
+                          {typeof selectedPromptForForm.output_schema === 'string' 
+                            ? selectedPromptForForm.output_schema 
+                            : JSON.stringify(selectedPromptForForm.output_schema, null, 2)}
                         </pre>
                       </div>
                     )}

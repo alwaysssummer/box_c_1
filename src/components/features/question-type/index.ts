@@ -1,8 +1,13 @@
-export { QuestionTypeList } from './QuestionTypeList'
-export type { QuestionTypeItem } from './QuestionTypeList'
 export { QuestionTypeForm } from './QuestionTypeForm'
-export { QuestionTypeFormNew } from './QuestionTypeFormNew'
-export { QuestionTypeModeSelector } from './QuestionTypeModeSelector'
-export type { QuestionTypeMode } from './QuestionTypeModeSelector'
-export { PromptBasedForm } from './PromptBasedForm'
-export type { PromptBasedFormData } from './PromptBasedForm'
+export { QuestionTypeList } from './QuestionTypeList'
+
+// 레거시 컴포넌트 (임시 호환성)
+export { 
+  QuestionTypeFormNew, 
+  QuestionTypeModeSelector, 
+  QuestionTypeGroupManager, 
+  PromptBasedForm,
+  type QuestionTypeItem,
+  type QuestionTypeMode,
+  type PromptBasedFormData,
+} from './LegacyComponents'

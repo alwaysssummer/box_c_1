@@ -443,7 +443,7 @@ export function SheetImporter({ groupName, onRegister }: SheetImporterProps) {
           const splitResult = splitResults[key]
 
           return {
-            name: `지문 ${num}`,
+            name: String(num),  // ⭐ "지문 " 접두사 제거
             content: passage?.englishPassage || '',
             koreanTranslation: passage?.koreanTranslation || '',
             sentences: splitResult?.splitResult?.sentences,

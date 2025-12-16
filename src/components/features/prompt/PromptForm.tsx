@@ -26,7 +26,19 @@ import {
   type AIErrorResponse
 } from '@/types'
 import type { Prompt, Passage, Group, Textbook, Unit } from '@/types/database'
-import { extractVariables } from '@/lib/prompt-utils'
+
+// 프롬프트에서 변수 추출 ({{variable}} 형식)
+function extractVariables(content: string): string[] {
+  const regex = /\{\{(\w+)\}\}/g
+  const variables: string[] = []
+  let match
+  while ((match = regex.exec(content)) !== null) {
+    if (!variables.includes(match[1])) {
+      variables.push(match[1])
+    }
+  }
+  return variables
+}
 
 interface PromptFormData {
   id: string | null
@@ -50,6 +62,7 @@ interface PromptFormData {
 interface PromptFormProps {
   prompt: Prompt | null
   isEditing: boolean
+  initialIsQuestionType?: boolean | null  // 새 프롬프트 생성 시 초기 타입
   onSave: (data: PromptFormData) => Promise<void>
   onDelete: () => Promise<void>
   onEdit: () => void
@@ -68,7 +81,7 @@ const initialFormData: PromptFormData = {
   sampleInput: '',
   sampleOutput: '',
   testPassageId: null,
-  preferredModel: 'gpt-4o-mini',
+  preferredModel: 'gemini-2.0-flash',
   status: 'draft',
   isQuestionType: false,
   questionGroup: 'practical',
@@ -77,6 +90,7 @@ const initialFormData: PromptFormData = {
 export function PromptForm({
   prompt,
   isEditing,
+  initialIsQuestionType,
   onSave,
   onDelete,
   onEdit,
@@ -90,7 +104,7 @@ export function PromptForm({
   const [showTestPanel, setShowTestPanel] = useState(true)
   const [testInputMode, setTestInputMode] = useState<'manual' | 'passage'>('manual')
   const [manualTestInput, setManualTestInput] = useState('')
-  const [selectedModel, setSelectedModel] = useState<ModelId>('gpt-4o-mini')
+  const [selectedModel, setSelectedModel] = useState<ModelId>('gemini-2.0-flash')
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<PromptTestResult | null>(null)
   const [testHistory, setTestHistory] = useState<PromptTestResult[]>([])
@@ -117,7 +131,9 @@ export function PromptForm({
         target: prompt.target,
         content: prompt.content,
         variables: prompt.variables || [],
-        outputSchema: prompt.output_schema || '',
+        outputSchema: typeof prompt.output_schema === 'string' 
+          ? prompt.output_schema 
+          : JSON.stringify(prompt.output_schema || '', null, 2),
         sampleInput: prompt.sample_input || '',
         sampleOutput: prompt.sample_output || '',
         testPassageId: prompt.test_passage_id,
@@ -129,11 +145,25 @@ export function PromptForm({
       setSelectedModel(prompt.preferred_model as ModelId)
       setManualTestInput(prompt.sample_input || '')
     } else {
-      setFormData(initialFormData)
+      // 새 프롬프트 생성 시 초기 타입 설정
+      const isOneClick = initialIsQuestionType === true
+      setFormData({
+        ...initialFormData,
+        isQuestionType: isOneClick,
+        category: isOneClick ? 'generation' : 'general',
+      })
+      setSelectedModel('gemini-2.0-flash')  // 기본 모델로 리셋
       setManualTestInput('')
       setTestResult(null)
     }
-  }, [prompt])
+  }, [prompt, initialIsQuestionType])
+
+  // 기본 AI 모델 변경 시 테스트 모델도 동기화
+  useEffect(() => {
+    if (formData.preferredModel) {
+      setSelectedModel(formData.preferredModel)
+    }
+  }, [formData.preferredModel])
 
   // 그룹 목록 가져오기
   useEffect(() => {
@@ -334,17 +364,38 @@ export function PromptForm({
 
   const testInput = testInputMode === 'manual' ? manualTestInput : selectedPassage?.content || ''
 
+  // 새 프롬프트 생성 모드인지 (기존 프롬프트 편집이 아닌)
+  const isNewPrompt = !formData.id && isEditing
+  // 초기 타입이 명시적으로 지정되었는지 (버튼으로 입장한 경우)
+  const hasExplicitType = initialIsQuestionType !== null && initialIsQuestionType !== undefined
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-violet-600" />
-          {isEditing
-            ? formData.id
-              ? '프롬프트 수정'
-              : '새 프롬프트'
-            : '프롬프트 상세'}
+          {isNewPrompt && hasExplicitType ? (
+            formData.isQuestionType ? (
+              <>
+                <Sparkles className="w-5 h-5 text-blue-600" />
+                🚀 새 원큐 프롬프트
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                🧩 새 슬롯 프롬프트
+              </>
+            )
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 text-violet-600" />
+              {isEditing
+                ? formData.id
+                  ? '프롬프트 수정'
+                  : '새 프롬프트'
+                : '프롬프트 상세'}
+            </>
+          )}
         </h3>
         
         {/* 상태 배지 */}
@@ -389,13 +440,16 @@ export function PromptForm({
             <div>
               <label className="block text-sm text-muted-foreground mb-1">
                 카테고리
+                {formData.isQuestionType && (
+                  <span className="text-xs text-blue-500 ml-1">(자동 설정)</span>
+                )}
               </label>
               <Select
                 value={formData.category}
                 onValueChange={value => setFormData(prev => ({ ...prev, category: value }))}
-                disabled={!isEditing}
+                disabled={!isEditing || formData.isQuestionType}
               >
-                <SelectTrigger>
+                <SelectTrigger className={formData.isQuestionType ? 'bg-slate-100' : ''}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -419,76 +473,181 @@ export function PromptForm({
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-muted-foreground mb-2">대상</label>
-            <RadioGroup
-              value={formData.target}
-              onValueChange={value => setFormData(prev => ({ ...prev, target: value as 'passage' | 'sentence' }))}
-              disabled={!isEditing}
-              className="flex gap-4"
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="passage" id="target-passage" />
-                <label htmlFor="target-passage" className="text-sm cursor-pointer">지문</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="sentence" id="target-sentence" />
-                <label htmlFor="target-sentence" className="text-sm cursor-pointer">문장</label>
-              </div>
-            </RadioGroup>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-muted-foreground mb-2">대상</label>
+              <RadioGroup
+                value={formData.target}
+                onValueChange={value => setFormData(prev => ({ ...prev, target: value as 'passage' | 'sentence' }))}
+                disabled={!isEditing}
+                className="flex gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="passage" id="target-passage" />
+                  <label htmlFor="target-passage" className="text-sm cursor-pointer">지문</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="sentence" id="target-sentence" />
+                  <label htmlFor="target-sentence" className="text-sm cursor-pointer">문장</label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* 기본 AI 모델 - 프롬프트별 지정 */}
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">
+                🤖 기본 AI 모델
+              </label>
+              <Select
+                value={formData.preferredModel}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, preferredModel: value as ModelId }))}
+                disabled={!isEditing}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="AI 모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(AI_MODELS) as [ModelId, typeof AI_MODELS[ModelId]][]).map(([id, info]) => (
+                    <SelectItem key={id} value={id}>
+                      {info.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                이 프롬프트로 문제 출제 시 사용할 모델
+              </p>
+            </div>
           </div>
 
-          {/* 문제 유형으로 사용 */}
-          <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/50">
-            <div className="flex items-center gap-2 mb-2">
-              <Checkbox
-                id="is-question-type"
-                checked={formData.isQuestionType}
-                onCheckedChange={(checked) => 
-                  setFormData(prev => ({ ...prev, isQuestionType: checked === true }))
-                }
-                disabled={!isEditing}
-              />
-              <label htmlFor="is-question-type" className="text-sm font-medium cursor-pointer">
-                🚀 문제 유형으로 사용 (원큐 출제)
-              </label>
-            </div>
-            {formData.isQuestionType && (
-              <div className="ml-6 space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  이 프롬프트가 &quot;문제출제 &gt; 문제 유형&quot;에 자동 등록됩니다.
-                </p>
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">그룹:</label>
-                  <Select
-                    value={formData.questionGroup}
-                    onValueChange={(value) => setFormData(prev => ({ 
-                      ...prev, 
-                      questionGroup: value as PromptFormData['questionGroup'] 
-                    }))}
-                    disabled={!isEditing}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="practical">실전</SelectItem>
-                      <SelectItem value="selection">선택/수정</SelectItem>
-                      <SelectItem value="writing">서술형/영작</SelectItem>
-                      <SelectItem value="analysis">문장분석</SelectItem>
-                      <SelectItem value="vocabulary">단어장</SelectItem>
-                    </SelectContent>
-                  </Select>
+          {/* 프롬프트 용도 선택 - 계층 구조 */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            {/* STEP 1: 용도 선택 - 새 프롬프트이면서 명시적 타입이 없을 때만 표시 */}
+            {!(isNewPrompt && hasExplicitType) && (
+              <div className="p-4 bg-gradient-to-r from-slate-50 to-white border-b">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="flex items-center justify-center w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full">1</span>
+                  <span className="font-semibold text-sm">프롬프트 용도</span>
                 </div>
-                {/* 출력 형식 자동 주입 안내 */}
-                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
-                  <p className="text-green-700 font-medium mb-1">📋 출력 형식 자동 주입</p>
-                  <p className="text-green-600">
-                    AI 호출 시 선택한 그룹({formData.questionGroup === 'practical' ? '실전' : 
-                      formData.questionGroup === 'selection' ? '선택/수정' :
-                      formData.questionGroup === 'writing' ? '서술형/영작' :
-                      formData.questionGroup === 'analysis' ? '문장분석' : '단어장'})에 맞는 
-                    [[태그]] 출력 형식이 자동으로 추가됩니다.
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => isEditing && setFormData(prev => ({ ...prev, isQuestionType: true, category: 'generation' }))}
+                    disabled={!isEditing}
+                    className={cn(
+                      'p-3 rounded-lg border-2 text-left transition-all',
+                      formData.isQuestionType
+                        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                        : 'border-slate-200 hover:border-slate-300 bg-white',
+                      !isEditing && 'opacity-60 cursor-not-allowed'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">🚀</span>
+                      <span className="font-semibold text-sm">원큐용</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      문제 유형에서 직접 사용<br/>
+                      (1 프롬프트 = 1 완성 문제)
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => isEditing && setFormData(prev => ({ ...prev, isQuestionType: false, category: 'general' }))}
+                    disabled={!isEditing}
+                    className={cn(
+                      'p-3 rounded-lg border-2 text-left transition-all',
+                      !formData.isQuestionType
+                        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+                        : 'border-slate-200 hover:border-slate-300 bg-white',
+                      !isEditing && 'opacity-60 cursor-not-allowed'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">🧩</span>
+                      <span className="font-semibold text-sm">슬롯용</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      데이터 유형에서 조립<br/>
+                      (부품으로 활용)
+                    </p>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 원큐용일 때: 문제 목적 & 세부 유형 (미니멀) */}
+            {formData.isQuestionType && (
+              <>
+                {/* 문제 목적 + 세부 유형 통합 */}
+                <div className="p-3 bg-slate-50/50">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    {/* 문제출제형 그룹 */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground mr-1">📝</span>
+                      {[
+                        { id: 'practical', label: '실전형' },
+                        { id: 'selection', label: '선택형' },
+                        { id: 'writing', label: '서술형' },
+                      ].map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => isEditing && setFormData(prev => ({ ...prev, questionGroup: item.id as typeof formData.questionGroup }))}
+                          disabled={!isEditing}
+                          className={cn(
+                            'px-3 py-1.5 text-xs font-medium rounded-full transition-all',
+                            formData.questionGroup === item.id
+                              ? 'bg-green-500 text-white'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:border-green-300',
+                            !isEditing && 'opacity-60 cursor-not-allowed'
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <span className="text-slate-300">|</span>
+
+                    {/* 자습서형 그룹 */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground mr-1">📚</span>
+                      {[
+                        { id: 'analysis', label: '분석형' },
+                        { id: 'vocabulary', label: '단어장' },
+                      ].map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => isEditing && setFormData(prev => ({ ...prev, questionGroup: item.id as typeof formData.questionGroup }))}
+                          disabled={!isEditing}
+                          className={cn(
+                            'px-3 py-1.5 text-xs font-medium rounded-full transition-all',
+                            formData.questionGroup === item.id
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:border-amber-300',
+                            !isEditing && 'opacity-60 cursor-not-allowed'
+                          )}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+              </>
+            )}
+
+            {/* 슬롯용 안내 */}
+            {!formData.isQuestionType && (
+              <div className="p-4 bg-purple-50/30">
+                <div className="p-3 bg-white border border-purple-200 rounded-lg">
+                  <p className="text-sm text-purple-700 font-medium mb-1">🧩 슬롯용 프롬프트</p>
+                  <p className="text-xs text-purple-600">
+                    이 프롬프트는 &quot;데이터 유형&quot;에서 부품으로 사용됩니다.<br/>
+                    여러 데이터 유형을 조합해서 문제를 구성할 수 있습니다.
                   </p>
                 </div>
               </div>
@@ -529,23 +688,27 @@ export function PromptForm({
             </div>
           )}
 
-          <div>
-            <label className="block text-sm text-muted-foreground mb-1">
-              출력 스키마 (JSON)
-            </label>
-            <Textarea
-              value={formData.outputSchema}
-              onChange={e => setFormData(prev => ({ ...prev, outputSchema: e.target.value }))}
-              disabled={!isEditing}
-              placeholder='예: { "topic_sentence": "string", "sentence_no": "number" }'
-              rows={3}
-              className="font-mono text-sm"
-            />
-          </div>
+          {/* 출력 스키마 - 슬롯용에서만 표시 */}
+          {!formData.isQuestionType && (
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">
+                출력 스키마 (JSON)
+              </label>
+              <Textarea
+                value={formData.outputSchema}
+                onChange={e => setFormData(prev => ({ ...prev, outputSchema: e.target.value }))}
+                disabled={!isEditing}
+                placeholder='예: { "topic_sentence": "string", "sentence_no": "number" }'
+                rows={3}
+                className="font-mono text-sm"
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 프롬프트 테스트 */}
+      {/* 프롬프트 테스트 - 슬롯용에서만 표시 */}
+      {!formData.isQuestionType && (
       <div className="border border-violet-200 rounded-lg overflow-hidden">
         <button
           type="button"
@@ -702,35 +865,24 @@ export function PromptForm({
               </Button>
             )}
 
-            {/* AI 모델 선택 */}
-            <div>
-              <label className="block text-sm font-medium mb-2">🤖 AI 모델 선택</label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {(Object.entries(AI_MODELS) as [ModelId, typeof AI_MODELS[ModelId]][]).map(([id, info]) => (
-                  <label
-                    key={id}
-                    className={cn(
-                      'flex flex-col p-2 border rounded-lg cursor-pointer transition-all',
-                      selectedModel === id
-                        ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500'
-                        : 'border-border hover:border-violet-300'
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="ai-model"
-                        value={id}
-                        checked={selectedModel === id}
-                        onChange={() => setSelectedModel(id)}
-                        className="w-3 h-3 accent-violet-600"
-                      />
-                      <span className="text-sm font-medium">{info.name}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground ml-5">{info.description}</span>
-                  </label>
-                ))}
-              </div>
+            {/* 테스트용 AI 모델 - 간소화 */}
+            <div className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">🤖 테스트 모델:</span>
+              <Select
+                value={selectedModel}
+                onValueChange={(value) => setSelectedModel(value as ModelId)}
+              >
+                <SelectTrigger className="flex-1 h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(AI_MODELS) as [ModelId, typeof AI_MODELS[ModelId]][]).map(([id, info]) => (
+                    <SelectItem key={id} value={id}>
+                      {info.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* 테스트 실행 */}
@@ -860,35 +1012,38 @@ export function PromptForm({
           </div>
         )}
       </div>
+      )}
 
-      {/* 샘플 데이터 */}
-      <div className="border border-border rounded-lg p-4">
-        <h4 className="text-sm font-semibold text-muted-foreground mb-3">샘플 데이터</h4>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-muted-foreground mb-1">샘플 입력</label>
-            <Textarea
-              value={formData.sampleInput}
-              onChange={e => setFormData(prev => ({ ...prev, sampleInput: e.target.value }))}
-              disabled={!isEditing}
-              placeholder="테스트에 사용할 샘플 입력 데이터"
-              rows={3}
-              className="font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-muted-foreground mb-1">샘플 출력</label>
-            <Textarea
-              value={formData.sampleOutput}
-              onChange={e => setFormData(prev => ({ ...prev, sampleOutput: e.target.value }))}
-              disabled={!isEditing}
-              placeholder="AI 출력 예시 (테스트 결과에서 적용 가능)"
-              rows={3}
-              className="font-mono text-sm"
-            />
+      {/* 샘플 데이터 - 슬롯용에서만 표시 */}
+      {!formData.isQuestionType && (
+        <div className="border border-border rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-muted-foreground mb-3">샘플 데이터</h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">샘플 입력</label>
+              <Textarea
+                value={formData.sampleInput}
+                onChange={e => setFormData(prev => ({ ...prev, sampleInput: e.target.value }))}
+                disabled={!isEditing}
+                placeholder="테스트에 사용할 샘플 입력 데이터"
+                rows={3}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">샘플 출력</label>
+              <Textarea
+                value={formData.sampleOutput}
+                onChange={e => setFormData(prev => ({ ...prev, sampleOutput: e.target.value }))}
+                disabled={!isEditing}
+                placeholder="AI 출력 예시 (테스트 결과에서 적용 가능)"
+                rows={3}
+                className="font-mono text-sm"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 액션 버튼 */}
       <div className="flex gap-2">

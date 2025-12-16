@@ -1,6 +1,113 @@
 // Supabase Database Types
 // 실제 사용 시 `npx supabase gen types typescript` 명령으로 자동 생성 권장
 
+import type { OutputConfig } from './output-config'
+export type { OutputConfig } from './output-config'
+
+// ============================================
+// 레이아웃 설정 타입 (4단계 위자드) - 기존 호환용
+// ============================================
+export interface LayoutConfig {
+  // Step 3: 레이아웃
+  placement_mode: 'free_flow' | 'page_fixed'
+  columns: 1 | 2
+  questions_per_page?: number
+  choice_layout?: 'horizontal' | 'vertical'
+  choice_marker?: 'number_circle' | 'alpha_circle' | 'number_dot'
+  
+  // Step 4: 출력 뷰
+  views?: {
+    student: string[]
+    answer: string[]
+    teacher: string[]
+  }
+}
+
+// 기본 레이아웃 설정
+export const DEFAULT_LAYOUT_CONFIG: LayoutConfig = {
+  placement_mode: 'free_flow',
+  columns: 1,
+  choice_layout: 'vertical',
+  choice_marker: 'number_circle',
+  views: {
+    student: ['passage', 'choices'],
+    answer: ['choices', 'answer'],
+    teacher: ['passage', 'choices', 'answer', 'explanation']
+  }
+}
+
+// 블록 출력 필드 타입
+export interface OutputField {
+  key: string
+  type?: 'text' | 'array' | 'number' | 'boolean' | 'object'  // 선택사항 (하위 호환)
+  label?: string  // 표시 이름
+  sample?: string | number | boolean | object
+}
+
+/**
+ * OutputField 정규화 함수
+ * - 기존 { key: "xxx" } 형식도 지원
+ * - 새로운 { key, type, sample } 형식도 지원
+ * - JSON 문자열도 파싱하여 처리 (DB에 문자열로 저장된 경우)
+ */
+export function normalizeOutputField(field: string | OutputField): OutputField {
+  // 문자열인 경우
+  if (typeof field === 'string') {
+    // JSON 문자열인지 확인하고 파싱 시도
+    if (field.startsWith('{') && field.includes('"key"')) {
+      try {
+        const parsed = JSON.parse(field)
+        if (parsed && typeof parsed === 'object' && 'key' in parsed && typeof parsed.key === 'string') {
+          return { 
+            key: parsed.key, 
+            type: parsed.type || 'text', 
+            label: parsed.label,
+            sample: parsed.sample 
+          }
+        }
+      } catch {
+        // JSON 파싱 실패 시 일반 문자열로 처리
+      }
+    }
+    // 일반 문자열 (필드 이름만)
+    return { key: field, type: 'text' }
+  }
+  
+  // 객체인 경우
+  let key = field.key
+  let label = field.label
+  
+  // key가 JSON 문자열인 경우도 처리
+  if (typeof key === 'string' && key.startsWith('{') && key.includes('"key"')) {
+    try {
+      const parsed = JSON.parse(key)
+      if (parsed && typeof parsed.key === 'string') {
+        key = parsed.key
+        label = label || parsed.label
+      }
+    } catch {
+      // 파싱 실패 시 원래 값 유지
+    }
+  }
+  
+  return { 
+    key, 
+    type: field.type || 'text',
+    label,
+    sample: field.sample
+  }
+}
+
+/**
+ * OutputField 배열 정규화
+ */
+export function normalizeOutputFields(fields: (string | OutputField)[] | null | undefined): OutputField[] {
+  if (!fields || !Array.isArray(fields)) {
+    return []
+  }
+  return fields.map(normalizeOutputField)
+}
+
 export type Json =
   | string
   | number
@@ -87,12 +194,7 @@ export interface Database {
           unit_id: string
           name: string
           content: string | null
-          korean_translation: string | null
           order_index: number
-          sentence_split_status: 'pending' | 'processing' | 'completed' | 'failed'
-          sentence_count: number
-          split_model: string | null
-          split_confidence: number | null
           created_at: string
         }
         Insert: {
@@ -100,12 +202,7 @@ export interface Database {
           unit_id: string
           name: string
           content?: string | null
-          korean_translation?: string | null
           order_index?: number
-          sentence_split_status?: 'pending' | 'processing' | 'completed' | 'failed'
-          sentence_count?: number
-          split_model?: string | null
-          split_confidence?: number | null
           created_at?: string
         }
         Update: {
@@ -113,153 +210,7 @@ export interface Database {
           unit_id?: string
           name?: string
           content?: string | null
-          korean_translation?: string | null
           order_index?: number
-          sentence_split_status?: 'pending' | 'processing' | 'completed' | 'failed'
-          sentence_count?: number
-          split_model?: string | null
-          split_confidence?: number | null
-          created_at?: string
-        }
-      }
-      sentences: {
-        Row: {
-          id: string
-          passage_id: string
-          sentence_no: number
-          content: string
-          korean_translation: string | null
-          word_count: number | null
-          confidence: number
-          split_method: 'regex' | 'ai' | 'manual' | 'hybrid'
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          passage_id: string
-          sentence_no: number
-          content: string
-          korean_translation?: string | null
-          word_count?: number | null
-          confidence?: number
-          split_method?: 'regex' | 'ai' | 'manual' | 'hybrid'
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          passage_id?: string
-          sentence_no?: number
-          content?: string
-          korean_translation?: string | null
-          word_count?: number | null
-          confidence?: number
-          split_method?: 'regex' | 'ai' | 'manual' | 'hybrid'
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      prompts: {
-        Row: {
-          id: string
-          name: string
-          description: string | null
-          category: string
-          target: 'passage' | 'sentence'
-          content: string
-          variables: string[]
-          output_schema: string | null
-          sample_input: string | null
-          sample_output: string | null
-          test_passage_id: string | null
-          preferred_model: string
-          status: 'draft' | 'testing' | 'confirmed'
-          last_tested_at: string | null
-          is_question_type: boolean  // 문제 유형으로 사용 여부
-          question_group: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'  // 문제 유형 그룹
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          name: string
-          description?: string | null
-          category?: string
-          target?: 'passage' | 'sentence'
-          content: string
-          variables?: string[]
-          output_schema?: string | null
-          sample_input?: string | null
-          sample_output?: string | null
-          test_passage_id?: string | null
-          preferred_model?: string
-          status?: 'draft' | 'testing' | 'confirmed'
-          last_tested_at?: string | null
-          is_question_type?: boolean
-          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          description?: string | null
-          category?: string
-          target?: 'passage' | 'sentence'
-          content?: string
-          variables?: string[]
-          output_schema?: string | null
-          sample_input?: string | null
-          sample_output?: string | null
-          test_passage_id?: string | null
-          preferred_model?: string
-          status?: 'draft' | 'testing' | 'confirmed'
-          last_tested_at?: string | null
-          is_question_type?: boolean
-          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
-          created_at?: string
-          updated_at?: string
-        }
-      }
-      prompt_test_history: {
-        Row: {
-          id: string
-          prompt_id: string
-          model: string
-          input_text: string
-          output_text: string | null
-          success: boolean
-          error_message: string | null
-          response_time: number | null
-          input_tokens: number | null
-          output_tokens: number | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          prompt_id: string
-          model: string
-          input_text: string
-          output_text?: string | null
-          success?: boolean
-          error_message?: string | null
-          response_time?: number | null
-          input_tokens?: number | null
-          output_tokens?: number | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          prompt_id?: string
-          model?: string
-          input_text?: string
-          output_text?: string | null
-          success?: boolean
-          error_message?: string | null
-          response_time?: number | null
-          input_tokens?: number | null
-          output_tokens?: number | null
           created_at?: string
         }
       }
@@ -268,18 +219,12 @@ export interface Database {
           id: string
           name: string
           target: 'passage' | 'sentence'
-          prompt_id: string | null
           prompt: string | null
           output_schema: Json | null
           sample_result: string | null
           has_answer: boolean
           answer_format: string | null
           has_dependency: boolean
-          difficulty: 'simple' | 'medium' | 'complex'
-          recommended_model: string
-          category: 'base' | 'analysis' | 'transform' | 'question'
-          config: Json
-          output_slots: string[]  // 출제 2단계: 이 데이터 유형이 생성하는 슬롯명 목록
           created_at: string
           updated_at: string
         }
@@ -287,18 +232,12 @@ export interface Database {
           id?: string
           name: string
           target?: 'passage' | 'sentence'
-          prompt_id?: string | null
           prompt?: string | null
           output_schema?: Json | null
           sample_result?: string | null
           has_answer?: boolean
           answer_format?: string | null
           has_dependency?: boolean
-          difficulty?: 'simple' | 'medium' | 'complex'
-          recommended_model?: string
-          category?: 'base' | 'analysis' | 'transform' | 'question'
-          config?: Json
-          output_slots?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -306,52 +245,14 @@ export interface Database {
           id?: string
           name?: string
           target?: 'passage' | 'sentence'
-          prompt_id?: string | null
           prompt?: string | null
           output_schema?: Json | null
           sample_result?: string | null
           has_answer?: boolean
           answer_format?: string | null
           has_dependency?: boolean
-          difficulty?: 'simple' | 'medium' | 'complex'
-          recommended_model?: string
-          category?: 'base' | 'analysis' | 'transform' | 'question'
-          config?: Json
-          output_slots?: string[]
           created_at?: string
           updated_at?: string
-        }
-      }
-      ai_model_config: {
-        Row: {
-          id: string
-          task_type: string
-          difficulty: 'simple' | 'medium' | 'complex' | null
-          preferred_model: string
-          fallback_model: string | null
-          cost_per_1k_tokens: number | null
-          description: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          task_type: string
-          difficulty?: 'simple' | 'medium' | 'complex' | null
-          preferred_model: string
-          fallback_model?: string | null
-          cost_per_1k_tokens?: number | null
-          description?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          task_type?: string
-          difficulty?: 'simple' | 'medium' | 'complex' | null
-          preferred_model?: string
-          fallback_model?: string | null
-          cost_per_1k_tokens?: number | null
-          description?: string | null
-          created_at?: string
         }
       }
       data_type_dependencies: {
@@ -371,21 +272,24 @@ export interface Database {
           depends_on_id?: string
         }
       }
-      question_types: {
+      // 프롬프트 테이블
+      prompts: {
         Row: {
           id: string
           name: string
           description: string | null
-          instruction: string | null
-          purpose: 'learning' | 'assessment'
-          passage_transform: Json
-          output_config: Json
-          extends_from: string | null
-          choice_layout: string
-          choice_marker: string
-          required_slots: string[]  // 출제 2단계: 이 문제 유형이 필요로 하는 슬롯명 목록
-          question_group: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'  // 출제 2단계: 문제 유형 그룹
-          prompt_id: string | null  // 프롬프트 직접 연결 (NULL이면 슬롯 기반, 값이 있으면 프롬프트 직접 생성)
+          category: string
+          target: 'passage' | 'sentence'
+          content: string
+          variables: string[]
+          output_schema: Json | null
+          sample_input: string | null
+          sample_output: string | null
+          test_passage_id: string | null
+          preferred_model: string
+          status: 'draft' | 'testing' | 'confirmed'
+          is_question_type: boolean
+          question_group: string
           created_at: string
           updated_at: string
         }
@@ -393,16 +297,18 @@ export interface Database {
           id?: string
           name: string
           description?: string | null
-          instruction?: string | null
-          purpose?: 'learning' | 'assessment'
-          passage_transform?: Json
-          output_config?: Json
-          extends_from?: string | null
-          choice_layout?: string
-          choice_marker?: string
-          required_slots?: string[]
-          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
-          prompt_id?: string | null
+          category?: string
+          target?: 'passage' | 'sentence'
+          content: string
+          variables?: string[]
+          output_schema?: Json | null
+          sample_input?: string | null
+          sample_output?: string | null
+          test_passage_id?: string | null
+          preferred_model?: string
+          status?: 'draft' | 'testing' | 'confirmed'
+          is_question_type?: boolean
+          question_group?: string
           created_at?: string
           updated_at?: string
         }
@@ -410,16 +316,158 @@ export interface Database {
           id?: string
           name?: string
           description?: string | null
+          category?: string
+          target?: 'passage' | 'sentence'
+          content?: string
+          variables?: string[]
+          output_schema?: Json | null
+          sample_input?: string | null
+          sample_output?: string | null
+          test_passage_id?: string | null
+          preferred_model?: string
+          status?: 'draft' | 'testing' | 'confirmed'
+          is_question_type?: boolean
+          question_group?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      // 블록 정의 테이블 (2단계 위자드)
+      block_definitions: {
+        Row: {
+          id: string
+          label: string
+          type: 'single' | 'bundle'
+          unit: 'passage' | 'sentence'
+          prompt: string
+          prompt_version: number
+          output_fields: OutputField[]
+          description: string | null
+          is_active: boolean
+          modifies_passage: boolean  // 지문 가공 여부
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          label: string
+          type: 'single' | 'bundle'
+          unit?: 'passage' | 'sentence'
+          prompt: string
+          prompt_version?: number
+          output_fields?: OutputField[]
+          description?: string | null
+          is_active?: boolean
+          modifies_passage?: boolean  // 기본값 false
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          label?: string
+          type?: 'single' | 'bundle'
+          unit?: 'passage' | 'sentence'
+          prompt?: string
+          prompt_version?: number
+          output_fields?: OutputField[]
+          description?: string | null
+          is_active?: boolean
+          modifies_passage?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      // 블록 인스턴스 테이블
+      block_instances: {
+        Row: {
+          id: string
+          block_def_id: string
+          passage_id: string
+          sentence_index: number
+          content: Json
+          status: 'pending' | 'processing' | 'completed' | 'failed'
+          error_message: string | null
+          generated_with_version: number | null
+          model_used: string | null
+          tokens_used: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          block_def_id: string
+          passage_id: string
+          sentence_index?: number
+          content?: Json
+          status?: 'pending' | 'processing' | 'completed' | 'failed'
+          error_message?: string | null
+          generated_with_version?: number | null
+          model_used?: string | null
+          tokens_used?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          block_def_id?: string
+          passage_id?: string
+          sentence_index?: number
+          content?: Json
+          status?: 'pending' | 'processing' | 'completed' | 'failed'
+          error_message?: string | null
+          generated_with_version?: number | null
+          model_used?: string | null
+          tokens_used?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      question_types: {
+        Row: {
+          id: string
+          name: string
+          instruction: string | null
+          choice_layout: string
+          choice_marker: string
+          // 새로운 4단계 위자드 필드
+          output_type: 'question' | 'study_material'
+          description: string | null
+          question_group: 'csat' | 'school_passage' | 'school_sentence' | 'study'
+          required_block_ids: string[]
+          layout_config: LayoutConfig
+          output_config: OutputConfig | null  // 새로운 출력 설정 (v2.0)
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
           instruction?: string | null
-          purpose?: 'learning' | 'assessment'
-          passage_transform?: Json
-          output_config?: Json
-          extends_from?: string | null
           choice_layout?: string
           choice_marker?: string
-          required_slots?: string[]
-          question_group?: 'practical' | 'selection' | 'writing' | 'analysis' | 'vocabulary'
-          prompt_id?: string | null
+          // 새로운 4단계 위자드 필드
+          output_type?: 'question' | 'study_material'
+          description?: string | null
+          question_group?: 'csat' | 'school_passage' | 'school_sentence' | 'study'
+          required_block_ids?: string[]
+          layout_config?: LayoutConfig
+          output_config?: OutputConfig | null  // 새로운 출력 설정 (v2.0)
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          instruction?: string | null
+          choice_layout?: string
+          choice_marker?: string
+          // 새로운 4단계 위자드 필드
+          output_type?: 'question' | 'study_material'
+          description?: string | null
+          question_group?: 'csat' | 'school_passage' | 'school_sentence' | 'study'
+          required_block_ids?: string[]
+          layout_config?: LayoutConfig
+          output_config?: OutputConfig | null  // 새로운 출력 설정 (v2.0)
           created_at?: string
           updated_at?: string
         }
@@ -431,8 +479,6 @@ export interface Database {
           data_type_id: string
           role: 'body' | 'choices' | 'answer' | 'explanation'
           order_index: number
-          config: Json
-          required: boolean
         }
         Insert: {
           id?: string
@@ -440,8 +486,6 @@ export interface Database {
           data_type_id: string
           role?: 'body' | 'choices' | 'answer' | 'explanation'
           order_index?: number
-          config?: Json
-          required?: boolean
         }
         Update: {
           id?: string
@@ -449,59 +493,36 @@ export interface Database {
           data_type_id?: string
           role?: 'body' | 'choices' | 'answer' | 'explanation'
           order_index?: number
-          config?: Json
-          required?: boolean
         }
       }
       generated_data: {
         Row: {
           id: string
           passage_id: string
-          sentence_id: string | null
           data_type_id: string
           result: Json | null
-          slot_data: Json | null  // 출제 2단계: 슬롯명별 파싱된 데이터
           status: 'pending' | 'processing' | 'completed' | 'failed'
           error_message: string | null
-          model_used: string | null
-          confidence: number | null
-          response_time: number | null
-          input_tokens: number | null
-          output_tokens: number | null
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
           passage_id: string
-          sentence_id?: string | null
           data_type_id: string
           result?: Json | null
-          slot_data?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
-          model_used?: string | null
-          confidence?: number | null
-          response_time?: number | null
-          input_tokens?: number | null
-          output_tokens?: number | null
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           passage_id?: string
-          sentence_id?: string | null
           data_type_id?: string
           result?: Json | null
-          slot_data?: Json | null
           status?: 'pending' | 'processing' | 'completed' | 'failed'
           error_message?: string | null
-          model_used?: string | null
-          confidence?: number | null
-          response_time?: number | null
-          input_tokens?: number | null
-          output_tokens?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -550,6 +571,33 @@ export interface Database {
           updated_at?: string
         }
       }
+      // 레이아웃 즐겨찾기 테이블
+      layout_favorites: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          config: OutputConfig
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          config: OutputConfig
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          config?: OutputConfig
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -568,16 +616,26 @@ export type Group = Database['public']['Tables']['groups']['Row']
 export type Textbook = Database['public']['Tables']['textbooks']['Row']
 export type Unit = Database['public']['Tables']['units']['Row']
 export type Passage = Database['public']['Tables']['passages']['Row']
-export type Sentence = Database['public']['Tables']['sentences']['Row']
-export type Prompt = Database['public']['Tables']['prompts']['Row']
-export type PromptTestHistory = Database['public']['Tables']['prompt_test_history']['Row']
 export type DataType = Database['public']['Tables']['data_types']['Row']
 export type DataTypeDependency = Database['public']['Tables']['data_type_dependencies']['Row']
+export type Prompt = Database['public']['Tables']['prompts']['Row']
+export type BlockDefinition = Database['public']['Tables']['block_definitions']['Row']
+export type BlockInstance = Database['public']['Tables']['block_instances']['Row']
 export type QuestionType = Database['public']['Tables']['question_types']['Row']
 export type QuestionTypeItem = Database['public']['Tables']['question_type_items']['Row']
 export type GeneratedData = Database['public']['Tables']['generated_data']['Row']
 export type GeneratedQuestion = Database['public']['Tables']['generated_questions']['Row']
-export type AIModelConfig = Database['public']['Tables']['ai_model_config']['Row']
+export type LayoutFavorite = Database['public']['Tables']['layout_favorites']['Row']
+
+// 블록 정의 + 확장 타입
+export interface BlockDefinitionWithInstances extends BlockDefinition {
+  instances?: BlockInstance[]
+}
+
+// 문제 유형 + 블록 정의 확장 타입
+export interface QuestionTypeWithBlocks extends QuestionType {
+  blocks?: BlockDefinition[]
+}
 
 // 트리 구조를 위한 확장 타입
 export interface TextbookWithUnits extends Textbook {
@@ -592,15 +650,6 @@ export interface GroupWithTextbooks extends Group {
   textbooks: TextbookWithUnits[]
 }
 
-// 지문과 문장 포함
-export interface PassageWithSentences extends Passage {
-  sentences: Sentence[]
-}
-
-export interface UnitWithPassagesAndSentences extends Unit {
-  passages: PassageWithSentences[]
-}
-
 // 트리 노드 타입
 export type TreeNodeType = 'group' | 'textbook' | 'unit' | 'passage'
 
@@ -612,78 +661,68 @@ export interface TreeNode {
 }
 
 // ============================================
-// 확장 타입: 출력 유형 시스템
+// Status API 응답 타입
 // ============================================
 
-// 데이터 유형 카테고리
-export type DataTypeCategory = 'base' | 'analysis' | 'transform' | 'question'
-
-// 출력 유형 목적
-export type OutputPurpose = 'learning' | 'assessment'
-
-// 지문 변형 타입
-export type PassageTransformType = 'none' | 'split' | 'extract' | 'delete' | 'insert'
-
-// 정답 형식
-export type AnswerFormat = 'single' | 'multiple' | 'combination' | 'text' | 'count' | 'order'
-
-// 지문 변형 설정 인터페이스
-export interface PassageTransformConfig {
-  type: PassageTransformType
-  split?: {
-    unit: 'sentence' | 'paragraph'
-    count: number
-    shuffleMethod: 'random' | 'reverse' | 'custom'
-  }
-  extract?: {
-    target: 'sentence' | 'phrase'
-    criteria: 'key_sentence' | 'transition' | 'conclusion'
-    positionMarkers: number
-  }
-  delete?: {
-    target: 'word' | 'phrase' | 'connector'
-    count: number
-    difficulty: 'easy' | 'medium' | 'hard'
-  }
-  insert?: {
-    type: 'binary_choice' | 'underline' | 'bracket'
-    count: number
-    targetType?: 'grammar' | 'vocabulary'
-  }
+export interface StatusPassage {
+  id: string
+  name: string
+  orderIndex: number
+  sentenceSplitStatus: 'pending' | 'completed' | 'error'
+  sentenceCount: number
+  generatedData: Record<string, string>
+  generatedQuestions: Record<string, string>
 }
 
-// 출력 설정 인터페이스
-export interface OutputConfig {
-  requiresAnswer: boolean
-  requiresExplanation: boolean
-  answerFormat: AnswerFormat
-  choiceCount?: number
-  answerType?: 'number' | 'count' | 'combination' | 'text'
+export interface StatusUnit {
+  id: string
+  name: string
+  orderIndex: number
+  passageCount: number
+  passages: StatusPassage[]
 }
 
-// 데이터 유형 설정 인터페이스
-export interface DataTypeConfig {
-  cacheable?: boolean
-  reusable?: boolean
-  batchable?: boolean
-  [key: string]: unknown
+export interface StatusTextbook {
+  id: string
+  name: string
+  orderIndex: number
+  unitCount: number
+  passageCount: number
+  units: StatusUnit[]
 }
 
-// 출력 유형 별칭 (기존 QuestionType의 확장 개념)
-export type OutputType = QuestionType
-
-// 출력 유형 아이템 (기존 QuestionTypeItem의 확장)
-export type OutputTypeItem = QuestionTypeItem
-
-// 출력 유형 상세 (조인된 데이터)
-export interface OutputTypeWithItems extends OutputType {
-  items: (OutputTypeItem & { dataType?: DataType })[]
-  parentTemplate?: OutputType | null
+export interface StatusGroup {
+  id: string
+  name: string
+  orderIndex: number
+  textbookCount: number
+  passageCount: number
+  textbooks: StatusTextbook[]
 }
 
-// 데이터 유형 상세 (의존성 포함)
-export interface DataTypeWithDependencies extends DataType {
-  dependencies: DataType[]
-  dependsOn: string[]
+export interface StatusResponse {
+  summary: {
+    groups: number
+    textbooks: number
+    units: number
+    passages: number
+    sentenceSplit: {
+      completed: number
+      pending: number
+      error: number
+    }
+  }
+  dataTypes: Array<{
+    id: string
+    name: string
+    category: string
+    stats: { total: number; completed: number; failed: number }
+  }>
+  questionTypes: Array<{
+    id: string
+    name: string
+    stats: { total: number; completed: number; failed: number }
+  }>
+  hierarchy: StatusGroup[]
 }
 

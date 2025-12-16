@@ -1,0 +1,372 @@
+/**
+ * 출력 전용 스타일
+ * 
+ * @media print를 사용하여 실제 프린트 시에만 적용되는 스타일을 정의합니다.
+ */
+
+/* ============================================
+   일반 화면 모드 (미리보기)
+   ============================================ */
+
+.unified-renderer {
+  width: 100%;
+  max-width: none; /* 최대 너비 제한 제거 */
+  margin: 0 auto; /* 중앙 정렬 */
+  background: #e5e5e5;
+  min-height: 100%;
+  padding: 40px 20px; /* 적당한 패딩 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.unified-renderer.mode-preview {
+  /* 미리보기 모드: 전체 높이 사용 */
+  height: 100%;
+}
+
+.unified-renderer.mode-print {
+  /* 인쇄 미리보기 모드: 스크롤 가능 */
+  height: auto;
+  min-height: 100%;
+}
+
+.unified-renderer.mode-screen {
+  /* 화면 모드: 일반 표시 */
+  background: transparent;
+  padding: 0;
+}
+
+/* ============================================
+   페이지 컨테이너 - 화면 크기에 맞게 확대
+   ============================================ */
+
+.page-container {
+  background: white;
+  margin: 0 auto 30px;
+  padding: 15mm;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+/* A4 세로 (210mm x 297mm) - 원본 크기 */
+.page-container.paper-a4-portrait {
+  width: 210mm;
+  min-height: 297mm;
+  /* 원본 크기 유지 */
+  transform: scale(1.0);
+  transform-origin: top center;
+  margin-bottom: 30px;
+}
+
+/* A4 가로 */
+.page-container.paper-a4-landscape {
+  width: 297mm;
+  min-height: 210mm;
+  transform: scale(1.0);
+  transform-origin: top center;
+  margin-bottom: 30px;
+}
+
+/* B5 세로 */
+.page-container.paper-b5-portrait {
+  width: 182mm;
+  min-height: 257mm;
+  transform: scale(1.0);
+  transform-origin: top center;
+  margin-bottom: 30px;
+}
+
+/* B5 가로 */
+.page-container.paper-b5-landscape {
+  width: 257mm;
+  min-height: 182mm;
+  transform: scale(1.0);
+  transform-origin: top center;
+  margin-bottom: 30px;
+}
+
+/* 첫 페이지 */
+.page-container:first-child {
+  margin-top: 40px;
+}
+
+/* 마지막 페이지 */
+.page-container:last-child {
+  margin-bottom: 40px;
+}
+
+/* ============================================
+   문제 아이템
+   ============================================ */
+
+.question-item {
+  margin-bottom: 20px;
+  page-break-inside: avoid; /* 문제가 페이지 경계에서 잘리지 않도록 */
+}
+
+.question-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 문제 번호 */
+.question-number {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 8px;
+}
+
+/* ============================================
+   필드 렌더링
+   ============================================ */
+
+.field-container {
+  margin-bottom: 12px;
+}
+
+.field-label {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+}
+
+.field-content {
+  line-height: 1.6;
+  color: #000;
+}
+
+/* 지문 */
+.field-passage {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f9fafb;
+  border-left: 4px solid #3b82f6;
+  font-size: 1em;
+  line-height: 1.8;
+  border-radius: 4px;
+}
+
+.field-passage .field-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 문제 */
+.field-question {
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+/* 선택지 */
+.field-choices {
+  margin-bottom: 12px;
+}
+
+.field-choices.layout-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-choices.layout-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.choice-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.choice-marker {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.choice-text {
+  flex: 1;
+}
+
+/* 정답 */
+.field-answer {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  font-weight: 600;
+}
+
+/* 해설 */
+.field-explanation {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f0f9ff;
+  border-left: 3px solid #0ea5e9;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+
+/* ============================================
+   2단 레이아웃
+   ============================================ */
+
+.columns-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5mm;
+}
+
+.columns-2 .field-span-2 {
+  grid-column: 1 / -1;
+}
+
+/* ============================================
+   페이지 번호
+   ============================================ */
+
+.page-number {
+  position: absolute;
+  bottom: 10mm;
+  font-size: 10pt;
+  color: #666;
+}
+
+.page-number.position-bottom-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.page-number.position-bottom-right {
+  right: 15mm;
+}
+
+/* ============================================
+   @media print - 실제 인쇄 시 적용
+   ============================================ */
+
+@media print {
+  /* body, html 배경 흰색 */
+  body,
+  html {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* 인쇄 전용 페이지 body */
+  .print-body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* 인쇄 전용 페이지 컨테이너 */
+  .print-preview-page {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 전체 배경 및 패딩 제거 */
+  .unified-renderer {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* 페이지 컨테이너 - 원래 크기로 복원 */
+  .page-container {
+    transform: none !important; /* scale 제거 */
+    margin: 0 !important;
+    padding: 15mm;
+    box-shadow: none;
+    page-break-after: always; /* 각 페이지 컨테이너 후 페이지 나눔 */
+  }
+
+  .page-container:first-child {
+    margin-top: 0 !important;
+  }
+
+  .page-container:last-child {
+    page-break-after: auto;
+    margin-bottom: 0 !important;
+  }
+
+  /* 문제 아이템 */
+  .question-item {
+    page-break-inside: avoid; /* 문제가 페이지 경계에서 잘리지 않도록 */
+  }
+
+  /* 지문 배경색 유지하되 인쇄 친화적으로 */
+  .field-passage {
+    background: #f9fafb !important;
+    border-left: 4px solid #3b82f6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 정답/해설 배경색 유지 */
+  .field-answer {
+    background: #fef3c7 !important;
+    border-left: 3px solid #f59e0b;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .field-explanation {
+    background: #f0f9ff !important;
+    border-left: 3px solid #0ea5e9;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 불필요한 요소 숨김 */
+  .no-print {
+    display: none !important;
+  }
+
+  /* 링크 밑줄 제거 */
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  /* 페이지 번호 위치 고정 */
+  .page-number {
+    position: fixed;
+  }
+}
+
+/* ============================================
+   다크모드 비활성화 (인쇄용)
+   ============================================ */
+
+@media print {
+  * {
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ============================================
+   인쇄 전용 페이지 (화면 모드)
+   ============================================ */
+
+@media screen {
+  .print-preview-page {
+    min-height: 100vh;
+    background: #f5f5f5;
+    padding: 20px;
+  }
+  
+  .print-body {
+    background: #f5f5f5;
+  }
+}
+

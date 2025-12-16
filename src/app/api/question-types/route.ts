@@ -1,124 +1,101 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { DEFAULT_LAYOUT_CONFIG } from '@/types/database'
+import { DEFAULT_OUTPUT_CONFIG } from '@/types/output-config'
 
-// GET /api/question-types - 모든 문제 유형 조회
+// GET: 문제 유형 목록 조회
 export async function GET() {
   try {
     const supabase = await createClient()
     
     const { data, error } = await supabase
       .from('question_types')
-      .select(`
-        *,
-        question_type_items (
-          *,
-          data_type:data_types (id, name, target, has_answer)
-        )
-      `)
-      .order('created_at', { ascending: true })
+      .select('*')
+      .order('created_at', { ascending: false })
     
-    if (error) throw error
+    if (error) {
+      console.error('Error fetching question types:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     
-    // 데이터 변환
-    const result = data.map(qt => ({
-      ...qt,
-      dataTypeList: qt.question_type_items
-        ?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index)
-        .map((item: { id: string; data_type: { id: string; name: string } | null; role: string }) => ({
-          id: item.id,
-          dataTypeId: item.data_type?.id,
-          dataTypeName: item.data_type?.name || 'Unknown',
-          role: item.role
-        })) || []
-    }))
-    
-    return NextResponse.json(result)
-  } catch (error) {
-    console.error('Error fetching question types:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch question types' },
-      { status: 500 }
+    // 블록 정의 정보 추가 (required_block_ids 기반)
+    const questionTypesWithBlocks = await Promise.all(
+      (data || []).map(async (qt) => {
+        if (qt.required_block_ids && qt.required_block_ids.length > 0) {
+          const { data: blocks } = await supabase
+            .from('block_definitions')
+            .select('*')
+            .in('id', qt.required_block_ids)
+          
+          return { ...qt, blocks: blocks || [] }
+        }
+        return { ...qt, blocks: [] }
+      })
     )
+    
+    return NextResponse.json(questionTypesWithBlocks)
+  } catch (error) {
+    console.error('Error in GET /api/question-types:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// POST /api/question-types - 새 문제 유형 생성
-export async function POST(request: NextRequest) {
+// POST: 새 문제 유형 생성
+export async function POST(request: Request) {
   try {
     const supabase = await createClient()
     const body = await request.json()
     
-    if (!body.name?.trim()) {
-      return NextResponse.json(
-        { error: 'Question type name is required' },
-        { status: 400 }
-      )
+    const {
+      name,
+      output_type = 'question',
+      description,
+      question_group = 'csat',
+      required_block_ids = [],
+      layout_config = DEFAULT_LAYOUT_CONFIG,
+      output_config,  // 새로운 출력 설정 v2.0
+      instruction,
+      choice_layout,
+      choice_marker,
+    } = body
+    
+    if (!name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
     
-    // 문제 유형(출력 유형) 생성
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const insertData: Record<string, unknown> = {
-      name: body.name.trim(),
-      description: body.description || null,
-      instruction: body.instruction || null,
-      purpose: body.purpose || 'assessment',
-      passage_transform: body.passageTransform || {},
-      output_config: body.outputConfig || {
-        requiresAnswer: true,
-        requiresExplanation: true,
-        answerFormat: 'single',
-        choiceCount: 5
-      },
-      extends_from: body.extendsFrom || null,
-      // 스네이크/카멜 케이스 모두 지원
-      choice_layout: body.choice_layout || body.choiceLayout || 'vertical',
-      choice_marker: body.choice_marker || body.choiceMarker || 'circle',
-    }
+    // output_config가 제공되지 않으면 기본값 사용
+    const finalOutputConfig = output_config || DEFAULT_OUTPUT_CONFIG
     
-    // prompt_id와 question_group은 컬럼이 있을 때만 추가 (스네이크/카멜 케이스 모두 지원)
-    const promptId = body.prompt_id || body.promptId
-    const questionGroup = body.question_group || body.group
-    if (promptId) insertData.prompt_id = promptId
-    if (questionGroup) insertData.question_group = questionGroup
-    
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: questionType, error: qtError } = await (supabase as any)
+    const { data, error } = await supabase
       .from('question_types')
-      .insert(insertData)
+      .insert({
+        name,
+        output_type,
+        description,
+        question_group,
+        required_block_ids,
+        layout_config,
+        output_config: finalOutputConfig,  // 새로운 출력 설정 저장
+        instruction,
+        choice_layout: choice_layout || layout_config.choice_layout || finalOutputConfig.options?.choiceLayout || 'vertical',
+        choice_marker: choice_marker || layout_config.choice_marker || 'number_circle',
+      })
       .select()
       .single()
     
-    if (qtError) throw qtError
-    
-    // 데이터 유형 항목 생성
-    if (body.dataTypeList && body.dataTypeList.length > 0) {
-      const items = body.dataTypeList.map((item: { dataTypeId: string; role: string; config?: object; required?: boolean }, idx: number) => ({
-        question_type_id: questionType.id,
-        data_type_id: item.dataTypeId,
-        role: item.role || 'body',
-        order_index: idx,
-        config: item.config || {},
-        required: item.required !== false
-      }))
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: itemsError } = await (supabase as any)
-        .from('question_type_items')
-        .insert(items)
-      
-      if (itemsError) throw itemsError
+    if (error) {
+      console.error('Error creating question type:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
-    return NextResponse.json({
-      ...questionType,
-      dataTypeList: body.dataTypeList || []
-    }, { status: 201 })
+    return NextResponse.json(data, { status: 201 })
   } catch (error) {
-    console.error('Error creating question type:', error)
-    return NextResponse.json(
-      { error: 'Failed to create question type' },
-      { status: 500 }
-    )
+    console.error('Error in POST /api/question-types:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+
+
+
 

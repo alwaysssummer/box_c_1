@@ -176,10 +176,11 @@ export async function POST(request: NextRequest) {
         
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i]
-          if (row.length >= 2 && row[0] && row[1]) {
+          // 영어지문(row[1])이 있으면 등록 (번호가 비어있으면 인덱스 사용)
+          if (row.length >= 2 && row[1]) {
             passages.push({
               number: row[0] || String(i),
-              englishPassage: row[1] || '',
+              englishPassage: row[1],
               koreanTranslation: row[2] || ''
             })
           }

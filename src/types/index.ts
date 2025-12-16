@@ -1,93 +1,10 @@
 // 모든 타입 re-export
 export * from './database'
-
-// 슬롯 시스템 타입 re-export
-export type {
-  SlotName,
-  QuestionGroup,
-  SlotDisplayInfo,
-  SlotStatus,
-  LayoutSubtype,
-  LayoutInfo,
-} from '../lib/slot-system'
-
-export {
-  STANDARD_SLOTS,
-  SLOT_GROUPS,
-  REQUIRED_SLOTS,
-  OPTIONAL_SLOTS,
-  GROUP_INFO,
-  ALL_GROUPS,
-  GROUP_LAYOUTS,
-  getSlotLabel,
-  getSlotNameFromLabel,
-  isSlotAvailableInGroup,
-  isRequiredSlot,
-  getGroupSlotInfo,
-  extractSlotsForGroup,
-  getSlotDisplayInfoForGroup,
-  getSlotStatuses,
-  getDefaultLayout,
-  getLayoutInfo,
-  isLayoutAvailable,
-} from '../lib/slot-system'
-
-// 프롬프트 파싱 타입 re-export
-export type {
-  ParsedQuestionResult,
-} from '../lib/prompt-parser'
-
-export {
-  parsePromptResult,
-  parseChoices,
-  parseAnswer,
-  parseVocabulary,
-  parsePracticalQuestion,
-  parseAnalysisData,
-  parseSelectionQuestion,
-  parseWritingQuestion,
-  parseBoxQuestion,
-  parseByGroup,
-  validateParsedResult,
-} from '../lib/prompt-parser'
-
-// 데이터 검증 타입 re-export
-export type {
-  PassageValidationResult,
-  ValidationResult,
-  ValidationSummary,
-  SlotValidationResult,
-  BatchValidationResult,
-} from '../lib/data-validator'
-
-export {
-  analyzePassageSlots,
-  createValidationSummary,
-  evaluateValidation,
-  validateSlotData,
-  batchValidateSlotData,
-} from '../lib/data-validator'
-
-// 슬롯 매퍼 타입 re-export
-export type {
-  MappedQuestion,
-  BatchMappingResult,
-  QuestionTemplate,
-  ChoiceMarker,
-} from '../lib/slot-mapper'
-
-export {
-  mapDataToTemplate,
-  batchMapDataToTemplate,
-  getChoiceMarker,
-  formatChoices,
-  renderQuestionAsText,
-  renderAnalysisAsText,
-} from '../lib/slot-mapper'
+export * from './output-config'
 
 // UI 관련 타입
 export type ActiveTab = '회원관리' | '교재관리' | '설정'
-export type SettingMenu = '프롬프트' | '데이터 유형' | '문제 유형' | '시스템 설정'
+export type SettingMenu = '프롬프트' | '데이터 유형' | '블록 관리' | '문제 유형' | '시스템 설정'
 
 // 프롬프트 카테고리
 export const PROMPT_CATEGORIES = [

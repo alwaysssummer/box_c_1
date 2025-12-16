@@ -1,0 +1,178 @@
+/**
+ * 프레임 + 블록 기반 출력 시스템 - 스타일
+ * 
+ * 핵심 원칙:
+ * - CSS Grid 기반 레이아웃 (CSS Column 사용 안 함)
+ * - 명확한 클래스 네이밍
+ * - 인쇄 시 동일한 결과 보장
+ */
+
+/* ============================================
+   1. 기본 설정
+   ============================================ */
+
+.print-document {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #1a1a1a;
+}
+
+/* ============================================
+   2. 페이지 스타일
+   ============================================ */
+
+.print-page {
+  background: white;
+  box-sizing: border-box;
+}
+
+/* 화면 미리보기용 그림자 */
+@media screen {
+  .print-page {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border-radius: 4px;
+    margin: 0 auto;
+  }
+}
+
+/* ============================================
+   3. 블록 공통 스타일
+   ============================================ */
+
+.print-block {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* ============================================
+   4. 지문 블록
+   ============================================ */
+
+.print-block-passage {
+  /* 기본 스타일은 컴포넌트에서 처리 */
+}
+
+/* ============================================
+   5. 문제 블록
+   ============================================ */
+
+.print-block-question {
+  /* 기본 스타일은 컴포넌트에서 처리 */
+}
+
+/* ============================================
+   6. 주어진 글 블록
+   ============================================ */
+
+.print-block-givenbox {
+  /* 기본 스타일은 컴포넌트에서 처리 */
+}
+
+/* ============================================
+   7. 문장형 블록
+   ============================================ */
+
+.print-block-sentence {
+  /* 기본 스타일은 컴포넌트에서 처리 */
+}
+
+/* ============================================
+   8. 프레임 셀
+   ============================================ */
+
+.print-frame-cell {
+  min-height: 50px;
+}
+
+/* ============================================
+   9. 인쇄 스타일
+   ============================================ */
+
+@media print {
+  /* 인쇄 시 숨길 요소 */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* 페이지 설정 */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  
+  /* 문서 전체 */
+  .print-document {
+    background: white;
+  }
+  
+  /* 페이지 */
+  .print-page {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    page-break-after: always;
+  }
+  
+  /* 마지막 페이지 */
+  .print-page:last-child {
+    page-break-after: auto;
+  }
+  
+  /* 블록 끊김 방지 */
+  .print-block {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* 배경색 인쇄 */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
+
+/* ============================================
+   10. 반응형 (화면 미리보기용)
+   ============================================ */
+
+@media screen and (max-width: 900px) {
+  .print-page {
+    width: 100% !important;
+    min-height: auto !important;
+    transform: none !important;
+  }
+}
+
+/* ============================================
+   11. 유틸리티 클래스
+   ============================================ */
+
+/* 그리드 영역 */
+.col-span-2 {
+  grid-column: span 2;
+}
+
+.row-span-2 {
+  grid-row: span 2;
+}
+
+/* 빈 상태 */
+.print-document-empty {
+  background: #f8fafc;
+  border: 2px dashed #e2e8f0;
+  border-radius: 8px;
+}
+
+
+
+
+
+
+
+
+
+
+
+

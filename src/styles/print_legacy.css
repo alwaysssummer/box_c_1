@@ -1,0 +1,490 @@
+/**
+ * 출력 템플릿 시스템 - 신문 스타일 2단 레이아웃
+ * 
+ * 핵심: CSS column-count 기반
+ * 흐름: 좌측 → 우측 → 다음 페이지 좌측 → ...
+ * 
+ * 화면 미리보기: 실제 A4 크기 유지, 2단 레이아웃 보장
+ * 인쇄: 브라우저가 자동으로 A4 페이지 분할
+ */
+
+/* ============================================
+   CSS 변수 기본값
+   ============================================ */
+:root {
+  /* 레이아웃 */
+  --print-columns: 2;
+  --print-column-gap: 24px;
+  
+  /* 페이지 여백 */
+  --print-padding-top: 15mm;
+  --print-padding-bottom: 15mm;
+  --print-padding-left: 15mm;
+  --print-padding-right: 15mm;
+  
+  /* 글자 크기 */
+  --print-font-base: 9pt;
+  --print-font-passage: 9pt;
+  --print-font-instruction: 9pt;
+  --print-font-choices: 9pt;
+  
+  /* 줄간격/간격 */
+  --print-line-height: 1.6;
+  --print-question-spacing: 16px;
+  
+  /* 테두리 */
+  --print-border-passage: none;
+  --print-border-divider: 1px solid #e5e5e5;
+}
+
+/* ============================================
+   인쇄 문서 컨테이너
+   ============================================ */
+.print-document {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: var(--print-font-base);
+  line-height: var(--print-line-height);
+  color: #1a1a1a;
+  background: white;
+}
+
+/* ============================================
+   A4 페이지 - 핵심: 고정 크기 보장
+   미리보기와 인쇄 모두 동일한 크기로 렌더링
+   ============================================ */
+.print-page {
+  /* A4 고정 크기 - 절대 축소되지 않음 */
+  width: 210mm;
+  min-width: 210mm;
+  max-width: 210mm;
+  
+  /* 높이도 고정 - 인쇄와 동일하게 */
+  height: 297mm;
+  min-height: 297mm;
+  max-height: 297mm;
+  
+  /* 여백 및 스타일 */
+  padding: var(--print-padding-top) var(--print-padding-right) var(--print-padding-bottom) var(--print-padding-left);
+  margin: 0 auto 48px auto;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+  box-sizing: border-box;
+  position: relative;
+  
+  /* 넘치는 내용 숨김 - 인쇄와 동일 */
+  overflow: hidden;
+}
+
+/* 페이지 번호 (우하단) */
+.print-page::after {
+  content: attr(data-page);
+  position: absolute;
+  bottom: 8mm;
+  right: 10mm;
+  font-size: 9pt;
+  color: #9ca3af;
+}
+
+/* ============================================
+   핵심: 신문 스타일 2단 레이아웃 (CSS column)
+   ============================================ */
+.print-content {
+  /* 2단 레이아웃 - 신문 스타일 */
+  column-count: var(--print-columns, 2);
+  column-gap: var(--print-column-gap, 24px);
+  column-fill: auto; /* 좌측 먼저 채우고 우측으로 */
+  
+  /* 단 너비 최소값 설정 - 2단이 확실히 표시되도록 */
+  column-width: 70mm; /* 210mm - 여백 ÷ 2 */
+}
+
+/* 1단 레이아웃 */
+.print-content.single-column {
+  column-count: 1;
+  column-width: auto;
+}
+
+/* 단 사이 구분선 (선택적) */
+.print-content.with-column-rule {
+  column-rule: 1px solid #e5e7eb;
+}
+
+/* ============================================
+   흐름 제어 - 끊기 규칙
+   ============================================ */
+
+/* 기본 모드 (protect-passage): 지문만 보호 */
+.print-question-group {
+  break-inside: avoid-column;  /* 열 내에서 끊기 방지 시도 */
+  margin-bottom: 24px;
+}
+
+.print-passage {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-question {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-choices {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ============================================
+   breakMode: free-flow - 완전 자유 흐름
+   어디서든 끊길 수 있음 (선택지만 보호)
+   ============================================ */
+.break-mode-free-flow .print-question-group {
+  break-inside: auto;
+}
+
+.break-mode-free-flow .print-passage {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.break-mode-free-flow .print-question {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+/* free-flow에서도 선택지는 함께 유지 */
+.break-mode-free-flow .print-choices {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* ============================================
+   신규: 열 간 끊김 제어 (columnBreak)
+   ============================================ */
+
+/* 열 간 자유 흐름 (빈 공간 최소화) */
+.column-break-allow .print-question-group,
+.column-break-allow .print-question,
+.column-break-allow .print-passage,
+.column-break-allow .print-choices {
+  break-inside: auto;
+  -webkit-column-break-inside: auto;
+}
+
+/* 열 간 끊김 방지 (문제가 열 경계에서 끊기지 않음) */
+.column-break-avoid .print-question-group,
+.column-break-avoid .print-question {
+  break-inside: avoid-column;
+  -webkit-column-break-inside: avoid;
+}
+
+/* ============================================
+   신규: 페이지 간 끊김 제어 (pageBreak)
+   ============================================ */
+
+/* 페이지 간 자유 흐름 */
+.page-break-allow .print-question-group,
+.page-break-allow .print-question,
+.page-break-allow .print-passage,
+.page-break-allow .print-choices {
+  page-break-inside: auto;
+}
+
+/* 페이지 간 끊김 방지 (문제가 페이지 경계에서 끊기지 않음) */
+.page-break-avoid .print-question-group,
+.page-break-avoid .print-question {
+  page-break-inside: avoid;
+}
+
+/* ============================================
+   신규: 요소별 보호 (protectElements)
+   ============================================ */
+
+/* 지문 보호 */
+.protect-passage .print-passage {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  -webkit-column-break-inside: avoid !important;
+}
+
+/* 선택지 보호 */
+.protect-choices .print-choices {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  -webkit-column-break-inside: avoid !important;
+}
+
+/* 문제 전체 보호 (지문+지시문+선택지 모두) */
+.protect-question .print-question {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+  -webkit-column-break-inside: avoid !important;
+}
+
+/* ============================================
+   조합 예시:
+   column-break-allow + page-break-avoid + protect-passage protect-choices
+   → 열 간은 자유롭게 흐르고, 페이지 간은 보호, 지문/선택지만 끊기지 않음
+   ============================================ */
+
+/* ============================================
+   지문 블록
+   ============================================ */
+.print-passage {
+  font-size: var(--print-font-passage);
+  line-height: var(--print-line-height);
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: var(--print-border-passage);
+}
+
+.print-passage p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ============================================
+   문제 블록
+   ============================================ */
+.print-question {
+  margin-bottom: var(--print-question-spacing);
+  padding-bottom: var(--print-question-spacing);
+  border-bottom: var(--print-border-divider);
+}
+
+.print-question:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* 문제 헤더 (유형 태그) */
+.print-question-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.print-question-tag {
+  font-size: 8pt;
+  padding: 2px 8px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.print-question-passage-name {
+  font-size: 8pt;
+  color: #6b7280;
+}
+
+/* 지시문 */
+.print-instruction {
+  font-size: var(--print-font-instruction);
+  font-weight: 500;
+  margin-bottom: 12px;
+  color: #1f2937;
+}
+
+.print-question-number {
+  color: #2563eb;
+  margin-right: 4px;
+}
+
+/* ============================================
+   선택지
+   ============================================ */
+.print-choices {
+  font-size: var(--print-font-choices);
+}
+
+.print-choices-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.print-choices-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.print-choices-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+
+.print-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.print-choice-marker {
+  flex-shrink: 0;
+  color: #4b5563;
+}
+
+.print-choice-text {
+  flex: 1;
+}
+
+/* ============================================
+   정답/해설
+   ============================================ */
+.print-answer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed #d1d5db;
+}
+
+.print-answer-label {
+  font-size: 8pt;
+  font-weight: 600;
+  color: #059669;
+  margin-right: 8px;
+}
+
+.print-answer-value {
+  color: #059669;
+  font-weight: 600;
+}
+
+.print-explanation {
+  margin-top: 8px;
+  font-size: 8pt;
+  color: #6b7280;
+  background: #f9fafb;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+/* ============================================
+   인쇄 미리보기 모드 (화면) - 핵심 수정
+   ============================================ */
+.print-preview-container {
+  background: #475569;
+  padding: 32px 16px;
+  min-height: 100%;
+  
+  /* 핵심: 좁은 화면에서 가로 스크롤 허용 */
+  overflow-x: auto;
+  
+  /* 최소 너비 설정 - A4 + 여백 */
+  min-width: fit-content;
+}
+
+.print-preview-container .print-page {
+  margin: 0 auto 48px auto;
+  
+  /* 핵심: flex-shrink 방지 - 절대 축소되지 않음 */
+  flex-shrink: 0;
+}
+
+/* 마지막 페이지 하단 여백 */
+.print-preview-container .print-page:last-child {
+  margin-bottom: 32px;
+}
+
+/* ============================================
+   인쇄 시 스타일 (@media print)
+   핵심: 미리보기와 100% 동일하게 출력
+   ============================================ */
+@media print {
+  /* 인쇄 시 숨길 요소 */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* 페이지 설정 */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* 미리보기 컨테이너 - 인쇄 시 투명하게 */
+  .print-preview-container {
+    display: block !important;
+    background: white !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    min-width: auto !important;
+  }
+  
+  /* ========================================
+     핵심: .print-page = 정확히 A4 1페이지
+     JS로 분할된 페이지 구조를 그대로 유지
+     ======================================== */
+  .print-page {
+    /* A4 정확한 크기 */
+    width: 210mm !important;
+    height: 297mm !important;
+    min-width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    
+    /* 박스 모델 */
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    
+    /* 넘치는 내용 숨김 - 미리보기와 동일하게 */
+    overflow: hidden !important;
+    
+    /* 핵심: 각 페이지 후 강제 분리 */
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  
+  /* 마지막 페이지는 분리 없음 */
+  .print-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+  
+  /* 페이지 번호 숨김 */
+  .print-page::after {
+    display: none !important;
+  }
+  
+  /* 2단 레이아웃 - 이미 JS로 분할되어 있으므로 column 사용 안 함 */
+  .print-content {
+    column-count: 1 !important;
+  }
+  
+  /* 인쇄 시 끊기 규칙 - 페이지 내에서만 적용 */
+  .print-question-group {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .print-passage {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .print-question {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .print-choices {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

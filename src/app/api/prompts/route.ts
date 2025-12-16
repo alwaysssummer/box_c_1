@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { extractVariables } from '@/lib/prompt-utils'
 import { handleApiError } from '@/lib/api-utils'
+
+// 프롬프트에서 변수 추출 ({{variable}} 형식)
+function extractVariables(content: string): string[] {
+  const regex = /\{\{(\w+)\}\}/g
+  const variables: string[] = []
+  let match
+  while ((match = regex.exec(content)) !== null) {
+    if (!variables.includes(match[1])) {
+      variables.push(match[1])
+    }
+  }
+  return variables
+}
 
 // GET /api/prompts - 모든 프롬프트 조회
 export async function GET(request: NextRequest) {

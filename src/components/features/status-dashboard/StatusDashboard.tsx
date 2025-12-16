@@ -4,6 +4,14 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { 
   Loader2, 
   RefreshCw, 
@@ -22,10 +30,12 @@ import {
   Book,
   File,
   ChevronRight,
+  RotateCcw,
+  Filter,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { QuestionPreviewModal, QuestionData, QuestionLayout } from '@/components/features/question'
+import { QuestionPreviewModal } from './QuestionPreviewModal'
 
 // 타입 정의
 interface DataTypeInfo {
@@ -184,10 +194,7 @@ interface StatusDashboardProps {
   mode?: DashboardMode
   selectedNode?: SelectedNode | null
   selectedTextbookIds?: string[]
-  // 필터 조건 (우측 패널에서 전달)
-  filterType?: FilterType
-  selectedTypeId?: string
-  statusFilter?: StatusFilter
+  onTextbookSelectionChange?: (textbookIds: string[]) => void
 }
 
 // 선택된 교재들의 지문을 토글 구조로 표시하는 컴포넌트
@@ -253,13 +260,15 @@ function SelectedTextbooksView({
 
   // 지문 필터링 함수
   function isPassageVisible(passage: PassageInfo): boolean {
+
     // 데이터 유형 필터
     if (filterType === 'dataType') {
       if (selectedTypeId !== 'all') {
         const status = passage.generatedData?.[selectedTypeId]
-        if (statusFilter === 'all') return status !== undefined
+        // 상태 필터에 따른 처리
+        if (statusFilter === 'all') return true  // ⭐ 개선: 모든 지문 표시 (생성 가능 포함)
         if (statusFilter === 'completed') return status === 'completed'
-        if (statusFilter === 'pending') return !status || status === 'pending'
+        if (statusFilter === 'pending') return !status || status === 'pending'  // 미생성 포함
         if (statusFilter === 'failed') return status === 'failed' || status === 'error'
         return true
       } else if (statusFilter !== 'all') {
@@ -276,9 +285,22 @@ function SelectedTextbooksView({
     if (filterType === 'questionType') {
       if (selectedTypeId !== 'all') {
         const status = passage.generatedQuestions?.[selectedTypeId]
-        if (statusFilter === 'all') return status !== undefined
+        
+        // ⭐ 디버깅 로그
+        if (passage.generatedQuestions && Object.keys(passage.generatedQuestions).length > 0) {
+          console.log('[Filter] Checking passage:', {
+            passageName: passage.name,
+            selectedTypeId,
+            status,
+            allQuestions: passage.generatedQuestions,
+            statusFilter,
+          })
+        }
+        
+        // 상태 필터에 따른 처리
+        if (statusFilter === 'all') return true  // ⭐ 개선: 모든 지문 표시 (생성 가능 포함)
         if (statusFilter === 'completed') return status === 'completed'
-        if (statusFilter === 'pending') return !status || status === 'pending'
+        if (statusFilter === 'pending') return !status || status === 'pending'  // 미생성 포함
         if (statusFilter === 'failed') return status === 'failed' || status === 'error'
         return true
       } else if (statusFilter !== 'all') {
@@ -290,27 +312,28 @@ function SelectedTextbooksView({
         return true
       }
     }
-    
+
     // 전체 유형 + 상태 필터만 적용 (문장분리 기준)
     if (filterType === 'all' && statusFilter !== 'all') {
       if (statusFilter === 'completed') return passage.sentenceSplitStatus === 'completed'
       if (statusFilter === 'pending') return passage.sentenceSplitStatus !== 'completed' && passage.sentenceSplitStatus !== 'error'
       if (statusFilter === 'failed') return passage.sentenceSplitStatus === 'error'
     }
-    
+
     return true
   }
 
   // 필터링된 모든 지문 ID 수집
   const allVisiblePassageIds = useMemo(() => {
     const ids: string[] = []
+    
     selectedTextbooks.forEach(({ textbook }) => {
       textbook.units?.forEach(unit => {
-        unit.passages?.filter(p => isPassageVisible(p)).forEach(p => {
-          ids.push(p.id)
-        })
+        const visible = unit.passages?.filter(p => isPassageVisible(p)) || []
+        visible.forEach(p => ids.push(p.id))
       })
     })
+    
     return ids
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTextbooks, filterType, selectedTypeId, statusFilter])
@@ -466,43 +489,41 @@ function SelectedTextbooksView({
   const hasChecked = checkedPassageIds.size > 0
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      {/* 헤더 */}
-      <div className="p-3 bg-blue-50 border-b">
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-medium text-sm">
-            📚 선택된 교재 ({selectedTextbooks.length}개)
-          </span>
-          {hasTypeFilter && (
-            <Badge className="text-xs bg-violet-100 text-violet-700 border-violet-300">
-              🔍 {getFilterTypeName()}
-            </Badge>
-          )}
-        </div>
-        
-        {/* 체크박스 컨트롤 + 삭제 버튼 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <Checkbox 
-              checked={isAllSelected}
-              onCheckedChange={toggleSelectAll}
-              className="h-4 w-4"
-            />
-            전체선택
-          </label>
-          
-          {hasChecked && (
-            <>
-              <span className="text-xs text-muted-foreground">|</span>
-              <Badge variant="outline" className="text-xs">
-                {checkedPassageIds.size}개 선택
+    <div className="space-y-3">
+      {/* 헤더 - 체크박스 컨트롤 */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Checkbox 
+                checked={isAllSelected}
+                onCheckedChange={toggleSelectAll}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">
+                전체선택
+              </span>
+              {hasChecked && (
+                <Badge variant="secondary" className="text-xs ml-2">
+                  {checkedPassageIds.size}개 선택
+                </Badge>
+              )}
+            </div>
+            
+            {hasTypeFilter && (
+              <Badge className="text-xs bg-violet-100 text-violet-700 border-violet-300">
+                🔍 {getFilterTypeName()}
               </Badge>
-              
-              {/* 전체 삭제 버튼 */}
+            )}
+          </div>
+          
+          {/* 삭제 버튼들 */}
+          {hasChecked && (
+            <div className="flex items-center gap-2">
               <Button
                 variant="destructive"
                 size="sm"
-                className="h-7 text-xs"
+                className="h-8 text-xs"
                 onClick={executeDeleteAll}
                 disabled={isDeleting}
               >
@@ -514,12 +535,11 @@ function SelectedTextbooksView({
                 전체삭제
               </Button>
               
-              {/* 필터 유형만 삭제 버튼 (필터 적용 시에만 표시) */}
               {hasTypeFilter && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                  className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50"
                   onClick={executeDeleteByFilter}
                   disabled={isDeleting}
                 >
@@ -531,127 +551,176 @@ function SelectedTextbooksView({
                   {getFilterTypeName()}만 삭제
                 </Button>
               )}
-            </>
+            </div>
           )}
-        </div>
 
-        {/* 필터 안내 */}
-        {hasTypeFilter && hasChecked && (
-          <div className="mt-2 text-xs text-violet-600 bg-violet-50 rounded px-2 py-1">
-            💡 "{getFilterTypeName()}만 삭제" 클릭 시 해당 유형 + 종속 데이터만 삭제됩니다
-          </div>
-        )}
-      </div>
+          {/* 필터 안내 */}
+          {hasTypeFilter && hasChecked && (
+            <div className="mt-3 text-xs text-violet-600 bg-violet-50 rounded px-3 py-2">
+              💡 "{getFilterTypeName()}만 삭제" 클릭 시 해당 유형 + 종속 데이터만 삭제됩니다
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* 교재/단원/지문 트리 */}
-      <div className="max-h-[500px] overflow-auto">
-        {selectedTextbooks.map(({ textbook, groupName }) => (
-          <div key={textbook.id} className="border-b last:border-b-0">
-            {/* 교재 헤더 */}
-            <button
-              className="w-full p-3 flex items-center gap-2 hover:bg-muted/30 text-left"
-              onClick={() => toggleTextbook(textbook.id)}
-            >
-              {expandedTextbooks.has(textbook.id) ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
-              <Book className="w-4 h-4 text-green-600" />
-              <span className="font-medium">{textbook.name}</span>
-              <span className="text-xs text-muted-foreground ml-2">({groupName})</span>
-              <Badge variant="outline" className="ml-auto text-xs">
-                {textbook.passageCount}개 지문
-              </Badge>
-            </button>
+      {/* 지문 카드 목록 */}
+      <div className="space-y-2">
+        {selectedTextbooks.map(({ textbook, groupName }) => 
+          textbook.units?.map(unit => 
+            unit.passages?.filter(p => isPassageVisible(p)).map(passage => {
+              const stats = getPassageStats(passage)
+              const isSelected = detailPassageId === passage.id
+              const isChecked = checkedPassageIds.has(passage.id)
+              
+              return (
+                <Card 
+                  key={passage.id}
+                  className={cn(
+                    "transition-all cursor-pointer hover:shadow-md",
+                    isSelected && "ring-2 ring-violet-500 shadow-lg",
+                    isChecked && "bg-blue-50/50"
+                  )}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-3">
+                      {/* 체크박스 */}
+                      <div onClick={(e) => {
+                        e.stopPropagation()
+                        togglePassageCheck(passage.id, e)
+                      }}>
+                        <Checkbox 
+                          checked={isChecked}
+                          className="h-4 w-4"
+                        />
+                      </div>
 
-            {/* 단원/지문 목록 */}
-            {expandedTextbooks.has(textbook.id) && (
-              <div className="bg-muted/20">
-                {textbook.units?.map(unit => (
-                  <div key={unit.id} className="border-t">
-                    {/* 단원 헤더 */}
-                    <button
-                      className="w-full p-2 pl-8 flex items-center gap-2 hover:bg-muted/30 text-left"
-                      onClick={() => toggleUnit(unit.id)}
-                    >
-                      {expandedUnits.has(unit.id) ? (
-                        <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                      )}
-                      <FileText className="w-3 h-3 text-orange-500" />
-                      <span className="text-sm">{unit.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({getFilteredPassageCount(unit)}{isFiltered ? `/${unit.passages?.length || 0}` : ''}개)
-                      </span>
-                    </button>
+                      {/* 지문 정보 */}
+                      <div 
+                        className="flex-1 min-w-0"
+                        onClick={() => onSelectPassage(passage.id)}
+                      >
+                        <div className="font-medium text-sm truncate mb-1">
+                          {passage.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {textbook.name} &gt; {unit.name}
+                        </div>
+                      </div>
 
-                    {/* 지문 목록 */}
-                    {expandedUnits.has(unit.id) && (
-                      <div className="bg-white">
-                        {unit.passages?.filter(p => isPassageVisible(p)).map(passage => {
-                          const stats = getPassageStats(passage)
-                          const isSelected = detailPassageId === passage.id
-                          const isChecked = checkedPassageIds.has(passage.id)
-                          return (
-                            <div
-                              key={passage.id}
-                              className={cn(
-                                "flex items-center gap-2 p-2 pl-12 hover:bg-blue-50 text-sm border-l-4",
-                                isSelected ? "bg-amber-50 border-l-amber-500" : "border-l-transparent",
-                                isChecked && "bg-red-50/50"
-                              )}
-                            >
-                              {/* 체크박스 */}
-                              <div onClick={(e) => togglePassageCheck(passage.id, e)}>
-                                <Checkbox 
-                                  checked={isChecked}
-                                  className="h-4 w-4"
-                                />
-                              </div>
-                              
-                              {/* 지문 정보 */}
-                              <button
-                                className="flex-1 flex items-center gap-2 text-left"
-                                onClick={() => onSelectPassage(passage.id)}
-                              >
-                                <File className="w-3 h-3 text-purple-600" />
-                                <span className="flex-1 truncate">{passage.name}</span>
-                                <div className="flex items-center gap-1.5 text-xs">
-                                  {stats.dataCompleted > 0 ? (
-                                    <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                                      📊 {stats.dataCompleted}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground/50">📊 -</span>
-                                  )}
-                                  {stats.questionCompleted > 0 ? (
-                                    <span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium">
-                                      ❓ {stats.questionCompleted}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground/50">❓ -</span>
-                                  )}
-                                </div>
-                                <Eye className="w-3 h-3 text-muted-foreground" />
-                              </button>
-                            </div>
-                          )
-                        })}
-                        {isFiltered && unit.passages?.filter(p => isPassageVisible(p)).length === 0 && (
-                          <div className="p-3 pl-14 text-xs text-muted-foreground">
-                            필터 조건에 맞는 지문이 없습니다
-                          </div>
+                      {/* 상태 배지 */}
+                      <div className="flex items-center gap-2">
+                        {/* 문제 유형 필터가 적용된 경우 - 해당 유형의 실제 상태 표시 */}
+                        {filterType === 'questionType' && selectedTypeId !== 'all' ? (
+                          (() => {
+                            const status = passage.generatedQuestions?.[selectedTypeId]
+                            
+                            if (status === 'completed') {
+                              return (
+                                <Badge variant="default" className="text-xs bg-green-600">
+                                  ✅ 완료
+                                </Badge>
+                              )
+                            } else if (status === 'failed' || status === 'error') {
+                              return (
+                                <Badge variant="destructive" className="text-xs">
+                                  ❌ 오류
+                                </Badge>
+                              )
+                            } else {
+                              // undefined 또는 'pending' = 미생성
+                              return (
+                                <Badge variant="outline" className="text-xs text-gray-600 border-gray-300">
+                                  ⏳ 미생성
+                                </Badge>
+                              )
+                            }
+                          })()
+                        ) : filterType === 'dataType' && selectedTypeId !== 'all' ? (
+                          // 데이터 유형 필터가 적용된 경우
+                          (() => {
+                            const status = passage.generatedData?.[selectedTypeId]
+                            
+                            if (status === 'completed') {
+                              return (
+                                <Badge variant="default" className="text-xs bg-green-600">
+                                  ✅ 완료
+                                </Badge>
+                              )
+                            } else if (status === 'failed' || status === 'error') {
+                              return (
+                                <Badge variant="destructive" className="text-xs">
+                                  ❌ 오류
+                                </Badge>
+                              )
+                            } else {
+                              return (
+                                <Badge variant="outline" className="text-xs text-gray-600 border-gray-300">
+                                  ⏳ 미생성
+                                </Badge>
+                              )
+                            }
+                          })()
+                        ) : (
+                          // 필터 없음 - 전체 통계 표시
+                          <>
+                            {stats.dataCompleted > 0 ? (
+                              <Badge variant="secondary" className="text-xs">
+                                <Database className="w-3 h-3 mr-1" />
+                                {stats.dataCompleted}/{stats.dataTotal}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                <Database className="w-3 h-3 mr-1" />
+                                0/{stats.dataTotal}
+                              </Badge>
+                            )}
+                            
+                            {stats.questionCompleted > 0 ? (
+                              <Badge variant="secondary" className="text-xs">
+                                <HelpCircle className="w-3 h-3 mr-1" />
+                                {stats.questionCompleted}/{stats.questionTotal}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                <HelpCircle className="w-3 h-3 mr-1" />
+                                0/{stats.questionTotal}
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+
+                      {/* 미리보기 버튼 */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSelectPassage(passage.id)
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })
+          )
+        )}
+        
+        {/* 필터링 결과가 없을 때 */}
+        {allVisiblePassageIds.length === 0 && (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <FolderOpen className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">
+                필터 조건에 맞는 지문이 없습니다
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
@@ -661,12 +730,19 @@ export function StatusDashboard({
   mode = 'status', 
   selectedNode, 
   selectedTextbookIds = [],
-  filterType = 'all',
-  selectedTypeId = 'all',
-  statusFilter = 'all',
+  onTextbookSelectionChange,
 }: StatusDashboardProps) {
   const [statusData, setStatusData] = useState<StatusData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  
+  // 필터 상태 (내부 관리)
+  const [filterType, setFilterType] = useState<FilterType>('all')
+  const [selectedTypeId, setSelectedTypeId] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  
+  // 문제 유형 옵션 (필터용)
+  const [filterQuestionTypes, setFilterQuestionTypes] = useState<QuestionTypeInfo[]>([])
+  const [isLoadingTypes, setIsLoadingTypes] = useState(false)
 
   // 지문 상세 패널
   const [detailPassageId, setDetailPassageId] = useState<string | null>(null)
@@ -677,34 +753,65 @@ export function StatusDashboard({
     questions: true,
   })
   
-  // 문제 미리보기 모달 상태
-  const [previewQuestion, setPreviewQuestion] = useState<{
-    data: QuestionData
-    layout: QuestionLayout
-    typeName: string
-    passageName: string
-  } | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
-
-  // 문제 미리보기 열기
+  // 문제 미리보기 상태
+  const [previewQuestionId, setPreviewQuestionId] = useState<string | null>(null)
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  
+  // 문제 미리보기 기능
   const openQuestionPreview = (item: GeneratedQuestionItem) => {
-    setPreviewQuestion({
-      data: {
-        instruction: item.instruction as string | null,
-        body: typeof item.body === 'string' ? item.body : null,
-        choices: item.choices as string | string[] | null,
-        answer: item.answer as string | null,
-        explanation: item.explanation as string | null,
-      },
-      layout: {
-        choiceMarker: 'circle',
-        choiceLayout: 'vertical',
-        questionGroup: 'practical',
-      },
-      typeName: item.question_type?.name || '문제',
-      passageName: detailData?.passage?.name || '',
-    })
-    setPreviewOpen(true)
+    setPreviewQuestionId(item.id)
+    setIsPreviewModalOpen(true)
+  }
+
+  // 문제 유형 로드
+  useEffect(() => {
+    const loadTypes = async () => {
+      setIsLoadingTypes(true)
+      try {
+        const qtRes = await fetch('/api/question-types')
+        
+        if (qtRes.ok) {
+          const qtData = await qtRes.json()
+          console.log('[StatusDashboard] 🔧 Loaded question types for filter:', qtData)
+          setFilterQuestionTypes(qtData)
+        }
+      } catch (error) {
+        console.error('Failed to load question types:', error)
+      } finally {
+        setIsLoadingTypes(false)
+      }
+    }
+    
+    if (mode === 'manage') {
+      loadTypes()
+    }
+  }, [mode])
+  
+  // 필터 초기화
+  const handleResetFilters = () => {
+    setFilterType('all')
+    setSelectedTypeId('all')
+    setStatusFilter('all')
+  }
+  
+  // 필터가 적용되었는지 확인
+  const isFilterApplied = selectedTypeId !== 'all' || statusFilter !== 'all'
+  
+  // 전체 교재 선택/해제
+  const handleToggleAllTextbooks = () => {
+    if (!statusData || !onTextbookSelectionChange) return
+    
+    const allTextbookIds = statusData.hierarchy.flatMap(group => 
+      group.textbooks?.map(t => t.id) || []
+    )
+    
+    if (selectedTextbookIds.length === allTextbookIds.length) {
+      // 전체 해제
+      onTextbookSelectionChange([])
+    } else {
+      // 전체 선택
+      onTextbookSelectionChange(allTextbookIds)
+    }
   }
 
   // 데이터 로드
@@ -714,6 +821,34 @@ export function StatusDashboard({
       const response = await fetch('/api/status')
       if (!response.ok) throw new Error('Failed to load status')
       const data = await response.json()
+      
+      // ⭐ 디버깅 로그 추가
+      console.log('[StatusDashboard] 📊 Loaded status data:', {
+        questionTypes: data.questionTypes,
+        totalPassages: data.summary?.passages,
+        samplePassage: data.hierarchy[0]?.textbooks?.[0]?.units?.[0]?.passages?.[0],
+      })
+      
+      // 생성된 문제가 있는 지문 찾기
+      const passagesWithQuestions = data.hierarchy.flatMap((g: GroupInfo) => 
+        g.textbooks?.flatMap(t => 
+          t.units?.flatMap(u => 
+            u.passages?.filter(p => 
+              Object.keys(p.generatedQuestions || {}).length > 0
+            ) || []
+          ) || []
+        ) || []
+      )
+      
+      console.log('[StatusDashboard] 📝 Passages with generated questions:', {
+        count: passagesWithQuestions.length,
+        samples: passagesWithQuestions.slice(0, 3).map((p: PassageInfo) => ({
+          id: p.id,
+          name: p.name,
+          generatedQuestions: p.generatedQuestions,
+        }))
+      })
+      
       setStatusData(data)
     } catch (error) {
       console.error('Error loading status:', error)
@@ -1007,28 +1142,157 @@ export function StatusDashboard({
         {mode === 'manage' && (
         <>
           {selectedTextbookIds.length === 0 ? (
-            <div className="border rounded-lg p-8 text-center bg-muted/30">
-              <FolderOpen className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-muted-foreground">좌측 패널에서 교재를 선택해주세요</p>
-              <p className="text-xs text-muted-foreground mt-1">체크박스로 여러 교재를 선택할 수 있습니다</p>
+            <div className="border-2 border-dashed border-violet-300 rounded-lg p-12 text-center bg-violet-50/30">
+              <FolderOpen className="w-16 h-16 mx-auto text-violet-400 mb-4" />
+              <h3 className="text-lg font-semibold text-violet-900 mb-2">교재를 선택해주세요</h3>
+              <p className="text-violet-700 mb-4">좌측 패널에서 교재를 체크박스로 선택하세요</p>
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-violet-200 text-sm text-violet-600">
+                <span className="text-xl">☐</span>
+                <span>교재 이름 클릭 시 체크됩니다</span>
+              </div>
             </div>
           ) : (
-            <SelectedTextbooksView 
-              textbookIds={selectedTextbookIds}
-              hierarchy={statusData.hierarchy}
-              dataTypes={dataTypes}
-              questionTypes={questionTypes}
-              onSelectPassage={handleSelectPassageForDetail}
-              detailPassageId={detailPassageId}
-              onRefresh={loadStatus}
-              filterType={filterType}
-              selectedTypeId={selectedTypeId}
-              statusFilter={statusFilter}
-            />
-          )}
-        </>
+            <div className="space-y-4">
+              {/* 필터 바 - 중앙 패널 상단 */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-violet-600" />
+                      <span className="font-medium text-sm">검색 조건</span>
+                    </div>
+                    {isFilterApplied && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleResetFilters}
+                        className="h-7 text-xs"
+                      >
+                        <RotateCcw className="w-3 h-3 mr-1" />
+                        초기화
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* 1. 문제 유형 선택 */}
+                    <div className="flex-1 min-w-[200px]">
+                      <Select 
+                        value={selectedTypeId} 
+                        onValueChange={(id) => {
+                          setSelectedTypeId(id)
+                          // 문제 유형이 선택되면 자동으로 questionType으로 설정
+                          if (id !== 'all') {
+                            setFilterType('questionType')
+                          } else {
+                            setFilterType('all')
+                          }
+                        }}
+                        disabled={isLoadingTypes}
+                      >
+                        <SelectTrigger className="bg-white h-9">
+                          <SelectValue placeholder={isLoadingTypes ? '로딩중...' : '전체 문제 유형'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">전체 문제 유형</SelectItem>
+                          {filterQuestionTypes.map(qt => (
+                            <SelectItem key={qt.id} value={qt.id}>
+                              <span className="flex items-center gap-2">
+                                <HelpCircle className="w-3 h-3" />
+                                {qt.name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* 3. 상태 */}
+                    <div className="flex-1 min-w-[140px]">
+                      <Select 
+                        value={statusFilter} 
+                        onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+                      >
+                        <SelectTrigger className="bg-white h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">전체</SelectItem>
+                          <SelectItem value="completed">✅ 완료</SelectItem>
+                          <SelectItem value="pending">⏳ 대기</SelectItem>
+                          <SelectItem value="failed">❌ 오류</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* 범위 정보 */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Badge variant="secondary" className="text-xs">
+                        📚 {selectedTextbookIds.length}개 교재
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  {/* 필터 안내 */}
+                  {selectedTypeId !== 'all' && (() => {
+                    const typeName = filterQuestionTypes.find(q => q.id === selectedTypeId)?.name
+                    return (
+                      <div className="mt-3 text-xs text-blue-600 bg-blue-50 rounded px-3 py-2">
+                        💡 "{typeName}" 유형의 모든 지문을 표시합니다. 
+                        {statusFilter === 'all' && ' 완료/미생성/오류 상태를 모두 표시합니다.'}
+                        {statusFilter === 'pending' && ' 아직 생성되지 않은 지문만 표시됩니다.'}
+                        {statusFilter === 'completed' && ' 이미 생성 완료된 지문만 표시됩니다.'}
+                        {statusFilter === 'failed' && ' 생성 중 오류가 발생한 지문만 표시됩니다.'}
+                      </div>
+                    )
+                  })()}
+                </CardHeader>
+              </Card>
+              
+              {/* 필터 유형명 가져오기 함수 */}
+              {(() => {
+                const getFilterTypeName = (): string => {
+                  if (filterType === 'dataType' && selectedTypeId !== 'all') {
+                    const dt = filterDataTypes.find(d => d.id === selectedTypeId)
+                    return dt?.name || '데이터 유형'
+                  }
+                  if (filterType === 'questionType' && selectedTypeId !== 'all') {
+                    const qt = filterQuestionTypes.find(q => q.id === selectedTypeId)
+                    return qt?.name || '문제 유형'
+                  }
+                  return ''
+                }
+                return null
+              })()}
+
+              {/* 교재/지문 목록 */}
+              <SelectedTextbooksView 
+                textbookIds={selectedTextbookIds}
+                hierarchy={statusData.hierarchy}
+                dataTypes={dataTypes}
+                questionTypes={questionTypes}
+                onSelectPassage={handleSelectPassageForDetail}
+                detailPassageId={detailPassageId}
+                onRefresh={loadStatus}
+                filterType={filterType}
+                selectedTypeId={selectedTypeId}
+                statusFilter={statusFilter}
+              />
+            </div>
+        )}
+      </>
         )}
       </div>
+
+      {/* 문제 미리보기 모달 */}
+      <QuestionPreviewModal
+        questionId={previewQuestionId}
+        isOpen={isPreviewModalOpen}
+        onClose={() => {
+          setIsPreviewModalOpen(false)
+          setPreviewQuestionId(null)
+        }}
+      />
 
       {/* 오른쪽: 지문 상세 패널 (문제관리 모드에서만 표시) */}
       {mode === 'manage' && detailPassageId && (
@@ -1226,15 +1490,6 @@ export function StatusDashboard({
         </div>
       )}
       
-      {/* 문제 미리보기 모달 */}
-      <QuestionPreviewModal
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        question={previewQuestion?.data || null}
-        defaultLayout={previewQuestion?.layout}
-        questionTypeName={previewQuestion?.typeName}
-        passageName={previewQuestion?.passageName}
-      />
     </div>
   )
 }
