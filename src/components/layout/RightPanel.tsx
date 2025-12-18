@@ -7,7 +7,7 @@ interface RightPanelProps {
 
 export function RightPanel({ title = '확장 기능', children }: RightPanelProps) {
   return (
-    <div className="w-72 h-screen bg-white border-l border-border flex flex-col shrink-0">
+    <div className="w-72 h-full bg-white border-l border-border flex flex-col shrink-0">
       {/* 헤더 */}
       <div className="h-14 border-b border-border flex items-center px-4 shrink-0 z-10">
         <h3 className="font-semibold text-foreground">{title}</h3>

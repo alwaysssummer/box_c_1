@@ -11,9 +11,6 @@ interface SidebarProps {
   children?: React.ReactNode
 }
 
-const tabs: ActiveTab[] = ['회원관리', '교재관리', '설정']
-const settingMenus: SettingMenu[] = ['블록 관리', '문제 유형', '시스템 설정']
-
 export function Sidebar({
   activeTab,
   setActiveTab,
@@ -22,47 +19,9 @@ export function Sidebar({
   children,
 }: SidebarProps) {
   return (
-    <div className="w-56 h-screen bg-white border-r border-border flex flex-col shrink-0">
-      {/* 탭 메뉴 */}
-      <div className="flex border-b border-border shrink-0">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              'flex-1 py-3 text-sm font-medium transition-colors',
-              activeTab === tab
-                ? 'text-primary border-b-2 border-primary bg-primary/5'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* 탭 콘텐츠 */}
+    <div className="w-56 h-full bg-white border-r border-border flex flex-col shrink-0">
+      {/* 동적 콘텐츠 영역 (트리 등) */}
       <div className="flex-1 p-3 overflow-auto">
-        {activeTab === '설정' && (
-          <div className="space-y-1 mb-3">
-            {settingMenus.map((menu) => (
-              <button
-                key={menu}
-                onClick={() => setSettingMenu(menu)}
-                className={cn(
-                  'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
-                  settingMenu === menu
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {menu}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* 동적 콘텐츠 영역 */}
         {children}
       </div>
     </div>

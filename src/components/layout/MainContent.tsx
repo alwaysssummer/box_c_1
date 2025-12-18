@@ -9,6 +9,7 @@ export type ContentMode = '현황' | '문장분리' | '문제출제' | '문제�
 interface MainContentProps {
   activeTab: ActiveTab
   settingMenu: SettingMenu
+  onSettingMenuChange?: (menu: SettingMenu) => void
   // 교재관리 서브 모드 (선택적)
   contentMode?: ContentMode
   onContentModeChange?: (mode: ContentMode) => void
@@ -17,19 +18,24 @@ interface MainContentProps {
 
 export function MainContent({ 
   activeTab, 
-  settingMenu, 
+  settingMenu,
+  onSettingMenuChange,
   contentMode,
   onContentModeChange,
   children 
 }: MainContentProps) {
   const getTitle = () => {
     if (activeTab === '설정') {
-      return `설정 > ${settingMenu}`
+      return settingMenu
+    }
+    if (activeTab === '교재관리' && contentMode) {
+      return contentMode
     }
     return activeTab
   }
 
   const contentModes: ContentMode[] = ['현황', '문장분리', '문제출제', '문제관리']
+  const settingMenus: SettingMenu[] = ['블록 관리', '문제 유형', '시스템 설정']
 
   return (
     <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
@@ -52,6 +58,26 @@ export function MainContent({
                 )}
               >
                 {mode}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 설정 서브 탭 */}
+        {activeTab === '설정' && onSettingMenuChange && (
+          <div className="ml-6 flex items-center gap-1">
+            {settingMenus.map((menu) => (
+              <button
+                key={menu}
+                onClick={() => onSettingMenuChange(menu)}
+                className={cn(
+                  'px-4 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  settingMenu === menu
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                )}
+              >
+                {menu}
               </button>
             ))}
           </div>

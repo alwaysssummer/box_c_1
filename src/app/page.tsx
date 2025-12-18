@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { MainContent, type ContentMode } from '@/components/layout/MainContent'
 import { RightPanel } from '@/components/layout/RightPanel'
@@ -896,22 +897,29 @@ export default function AdminPage() {
   const isSheetImportMode = activeTab === '교재관리' && contentMode === '문장분리' && selectedGroup !== null
 
   const mainLayout = (
-    <div className="h-screen flex bg-muted/30 overflow-hidden">
-      {/* 좌측 사이드바 */}
-      <div className="relative z-10">
+    <div className="h-screen flex flex-col bg-muted/30 overflow-hidden">
+      {/* GNB 헤더 */}
+      <Header
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab)
+          setSelectedGroup(null)
+          setSelectedTextbook(null)
+          setSelectedPrompt(null)
+          setIsEditingPrompt(false)
+          setSelectedDataType(null)
+          setIsEditingDataType(false)
+          setSelectedQuestionType(null)
+          setIsEditingQuestionType(false)
+        }}
+      />
+
+      {/* 3단 레이아웃 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 좌측 사이드바 */}
         <Sidebar
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab)
-            setSelectedGroup(null)
-            setSelectedTextbook(null)
-            setSelectedPrompt(null)
-            setIsEditingPrompt(false)
-            setSelectedDataType(null)
-            setIsEditingDataType(false)
-            setSelectedQuestionType(null)
-            setIsEditingQuestionType(false)
-          }}
+          setActiveTab={setActiveTab}
           settingMenu={settingMenu}
           setSettingMenu={(menu) => {
             setSettingMenu(menu)
@@ -1091,17 +1099,34 @@ export default function AdminPage() {
           </div>
         )}
 
-        </Sidebar>
-      </div>
+        {/* 설정 - 블록 관리 목록 */}
+        {activeTab === '설정' && settingMenu === '블록 관리' && (
+          <BlockList
+            blocks={blocks}
+            isLoading={isLoadingBlocks}
+            selectedId={selectedBlock?.id || null}
+            onSelect={(block) => {
+              setSelectedBlock(block)
+              setIsEditingBlock(false)
+            }}
+            onAdd={() => {
+              setSelectedBlock(null)
+              setIsEditingBlock(true)
+            }}
+            onDelete={handleDeleteBlock}
+          />
+        )}
 
-      {/* 중앙 메인 콘텐츠 */}
-      <div className="flex-1 relative z-0">
+        </Sidebar>
+
+        {/* 중앙 메인 콘텐츠 */}
         <MainContent 
           activeTab={activeTab} 
           settingMenu={settingMenu}
-        contentMode={contentMode}
-        onContentModeChange={setContentMode}
-      >
+          onSettingMenuChange={setSettingMenu}
+          contentMode={contentMode}
+          onContentModeChange={setContentMode}
+        >
         {/* 교재관리 - 현황 모드 (통계만) */}
         {activeTab === '교재관리' && contentMode === '현황' && (
           <StatusDashboard mode="status" />
@@ -1467,11 +1492,9 @@ export default function AdminPage() {
           <SystemSettings />
         )}
         </MainContent>
-      </div>
 
-      {/* 우측 패널 */}
-      <div className="relative z-0">
-      <RightPanel
+        {/* 우측 패널 */}
+        <RightPanel
         title={
           isSheetImportMode
             ? '📝 문장 분리'
@@ -1488,24 +1511,6 @@ export default function AdminPage() {
                   : '확장 기능'
         }
       >
-        {/* 설정 - 블록 관리 목록 */}
-        {activeTab === '설정' && settingMenu === '블록 관리' && (
-          <BlockList
-            blocks={blocks}
-            isLoading={isLoadingBlocks}
-            selectedId={selectedBlock?.id || null}
-            onSelect={(block) => {
-              setSelectedBlock(block)
-              setIsEditingBlock(false)
-            }}
-            onAdd={() => {
-              setSelectedBlock(null)
-              setIsEditingBlock(true)
-            }}
-            onDelete={handleDeleteBlock}
-          />
-        )}
-
         {/* 설정 - 프롬프트 목록 */}
         {activeTab === '설정' && settingMenu === '프롬프트' && (
           <PromptList
